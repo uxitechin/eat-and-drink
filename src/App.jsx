@@ -14,16 +14,16 @@ import MenuManagement from './components/MenuManagement';
 import PrinterSettings from './components/PrinterSettings';
 import BillPreviewModal from './components/BillPreviewModal';
 import StartupAnimation from './components/StartupAnimation';
-import InstallPromptModal from './components/InstallPromptModal';
+import InstallPromptModal, { InstallGuideModal } from './components/InstallPromptModal';
 import { usePWAInstall } from './hooks/usePWAInstall';
 
 import { 
   getCategories, 
   getItems, 
   getTodaySummary, 
-  saveConfirmedBill, 
-  getPrinterSettings,
+  getPrinterSettings, 
   savePrinterSettings,
+  saveConfirmedBill,
   fetchRemoteCategories,
   fetchRemoteItems,
   fetchRemoteBills,
@@ -37,7 +37,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu', 'printer'
   
   // PWA Installation Hook
-  const { isInstallable, isInstalled, showPrompt, triggerInstall, dismissPrompt } = usePWAInstall();
+  const { 
+    isInstallable, 
+    isInstalled, 
+    showPrompt, 
+    showGuideModal, 
+    triggerInstall, 
+    dismissPrompt, 
+    closeGuideModal 
+  } = usePWAInstall();
 
   // App data state
   const [categories, setCategories] = useState([]);
@@ -160,6 +168,8 @@ export default function App() {
             soundEnabled={soundEnabled}
             setSoundEnabled={handleSoundChange}
             onReplayIntro={() => setShowStartup(true)}
+            onTriggerPWAInstall={triggerInstall}
+            isInstalled={isInstalled}
           />
 
           {/* Main Content Area (With bottom padding for floating navigation on mobile) */}
@@ -237,6 +247,13 @@ export default function App() {
             <InstallPromptModal 
               onInstall={triggerInstall} 
               onDismiss={dismissPrompt} 
+            />
+          )}
+
+          {/* Step-by-Step Manual Installation Guide Dialog */}
+          {showGuideModal && !isInstalled && (
+            <InstallGuideModal 
+              onClose={closeGuideModal} 
             />
           )}
 

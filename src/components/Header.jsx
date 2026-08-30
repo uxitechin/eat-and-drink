@@ -13,7 +13,8 @@ import {
   Menu, 
   X,
   Banknote,
-  CreditCard
+  CreditCard,
+  Download
 } from 'lucide-react';
 
 export default function Header({ 
@@ -22,12 +23,15 @@ export default function Header({
   todaySummary, 
   soundEnabled, 
   setSoundEnabled,
-  onReplayIntro
+  onReplayIntro,
+  onTriggerPWAInstall,
+  isInstalled
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Live real-time ticking clock
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -35,9 +39,11 @@ export default function Header({
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
     }
   };
 
@@ -77,6 +83,17 @@ export default function Header({
 
         {/* Mobile Action Controls & Toggle */}
         <div className="flex items-center gap-2 md:hidden">
+          {!isInstalled && onTriggerPWAInstall && (
+            <button
+              onClick={onTriggerPWAInstall}
+              className="px-2.5 py-1.5 rounded-2xl glass-btn-coral flex items-center gap-1 text-[11px] font-black cursor-pointer shadow-xs active:scale-95"
+              title="Install App"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install</span>
+            </button>
+          )}
+
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 rounded-2xl glass-pill text-[#697586] hover:text-[#18202B]"
@@ -122,6 +139,17 @@ export default function Header({
 
       {/* Right: Quick Action Controls (Desktop Floating Capsules) */}
       <div className="hidden md:flex items-center gap-2">
+        {!isInstalled && onTriggerPWAInstall && (
+          <button
+            onClick={onTriggerPWAInstall}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black glass-btn-coral cursor-pointer shadow-md active:scale-95"
+            title="Install Application on Desktop/Mobile"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Install App</span>
+          </button>
+        )}
+
         <button
           onClick={() => setActiveTab('menu')}
           className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
