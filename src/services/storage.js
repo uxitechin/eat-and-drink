@@ -392,6 +392,27 @@ export function savePrinterSettings(settings) {
   localStorage.setItem(KEYS.PRINTER_SETTINGS, JSON.stringify(settings));
 }
 
+// --- RESET ALL BILLS & RESTART FROM ZERO ---
+export async function clearAllBillsAndResetSales() {
+  // 1. Clear local storage records
+  localStorage.removeItem(KEYS.BILLS);
+  localStorage.removeItem(KEYS.DAILY_SUMMARIES);
+  localStorage.removeItem(KEYS.OFFLINE_QUEUE);
+  localStorage.setItem(KEYS.LAST_BILL_SEQ, '0');
+
+  // 2. Clear Supabase tables if configured
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('bill_items').delete().neq('item_name', '__non_existent__');
+      await supabase.from('bills').delete().neq('bill_number', '__non_existent__');
+    } catch (err) {
+      console.warn('[Supabase] Error truncating remote bills:', err.message);
+    }
+  }
+
+  return true;
+}
+
 // --- DATABASE BACKUP / RESTORE ---
 export function exportFullDatabase() {
   return {

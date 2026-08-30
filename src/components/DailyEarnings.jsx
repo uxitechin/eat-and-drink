@@ -10,9 +10,10 @@ import {
   Clock, 
   Award,
   Sparkles,
-  PieChart
+  PieChart,
+  RotateCcw
 } from 'lucide-react';
-import { getAllBills, getAllDailySummaries, getTodayDateKey, formatDateDisplay } from '../services/storage';
+import { getAllBills, getAllDailySummaries, getTodayDateKey, formatDateDisplay, clearAllBillsAndResetSales } from '../services/storage';
 
 export default function DailyEarnings({ todaySummary }) {
   const [selectedDateKey, setSelectedDateKey] = useState(getTodayDateKey());
@@ -98,6 +99,13 @@ export default function DailyEarnings({ todaySummary }) {
     document.body.removeChild(link);
   };
 
+  const handleResetAllSales = async () => {
+    if (window.confirm('Are you sure you want to reset all bills and start sales from ₹0?')) {
+      await clearAllBillsAndResetSales();
+      window.location.reload();
+    }
+  };
+
   return (
     <div className="flex-1 p-4 overflow-y-auto space-y-4 max-w-7xl mx-auto w-full select-none">
       
@@ -115,7 +123,7 @@ export default function DailyEarnings({ todaySummary }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={selectedDateKey}
             onChange={(e) => setSelectedDateKey(e.target.value)}
@@ -134,6 +142,15 @@ export default function DailyEarnings({ todaySummary }) {
           >
             <Download className="w-3.5 h-3.5 text-[#FF5B4A]" />
             <span>Export CSV</span>
+          </button>
+
+          <button
+            onClick={handleResetAllSales}
+            className="px-4 py-2 glass-pill hover:bg-rose-50 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="Clear all test bills and reset revenue counters to ₹0"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset to ₹0</span>
           </button>
         </div>
       </div>
