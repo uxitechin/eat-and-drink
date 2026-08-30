@@ -21,8 +21,13 @@ import {
   getTodaySummary, 
   saveConfirmedBill, 
   getPrinterSettings,
-  savePrinterSettings
+  savePrinterSettings,
+  fetchRemoteCategories,
+  fetchRemoteItems,
+  fetchRemoteBills,
+  syncOfflineBills
 } from './services/storage';
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 import { printReceipt } from './services/printer';
 
 export default function App() {
@@ -49,18 +54,35 @@ export default function App() {
     { id: 'printer', label: 'Printer Settings', hotkey: 'F5', icon: Printer },
   ];
 
-  // Load initial data
+  // Load initial data (Instant local cache + Async Supabase sync)
   useEffect(() => {
-    const loadedCats = getCategories();
-    const loadedItems = getItems();
-    const loadedSummary = getTodaySummary();
+    // 1. Instant local load
+    setCategories(getCategories());
+    setItems(getItems());
+    setTodaySummary(getTodaySummary());
     const loadedSettings = getPrinterSettings();
-
-    setCategories(loadedCats);
-    setItems(loadedItems);
-    setTodaySummary(loadedSummary);
     setPrinterSettings(loadedSettings);
     setSoundEnabled(loadedSettings?.soundEnabled ?? true);
+
+    // 2. Async Supabase Sync
+    if (isSupabaseConfigured) {
+      fetchRemoteCategories().then(cats => cats && setCategories(cats));
+      fetchRemoteItems().then(itms => itms && setItems(itms));
+      fetchRemoteBills().then(() => setTodaySummary(getTodaySummary()));
+      syncOfflineBills();
+
+      // 3. Realtime subscription on bills
+      const channel = supabase
+        .channel('public:bills')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bills' }, () => {
+          fetchRemoteBills().then(() => setTodaySummary(getTodaySummary()));
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, []);
 
   // Sync sound settings changes

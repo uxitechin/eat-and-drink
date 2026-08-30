@@ -9,9 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "21st": "node ./node_modules/@21st-dev/cli/dist/index.js"
-
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "@tailwindcss/vite": "^4.3.3",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.37.0",
