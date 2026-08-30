@@ -10,16 +10,26 @@ import {
   X, 
   AlertTriangle,
   FolderPlus,
-  Power
+  Power,
+  Printer,
+  Sliders
 } from 'lucide-react';
 import { saveCategories, saveItems, resetMenuToDefault } from '../services/storage';
+import PrinterSettings from './PrinterSettings';
 
 export default function MenuManagement({ 
   categories, 
   setCategories, 
   items, 
-  setItems 
+  setItems,
+  printerSettings,
+  setPrinterSettings,
+  soundEnabled,
+  setSoundEnabled,
+  onTriggerPWAInstall,
+  isAppInstalled
 }) {
+  const [activeAdminTab, setActiveAdminTab] = useState('dishes'); // 'dishes' or 'printer'
   const [selectedCatId, setSelectedCatId] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -155,59 +165,102 @@ export default function MenuManagement({
 
   return (
     <div className="flex-1 p-4 overflow-hidden flex flex-col space-y-3.5 max-w-7xl mx-auto w-full select-none">
-      {/* Top Glass Bar with actions */}
+      {/* Top Glass Bar with Navigation & Actions */}
       <div className="glass-surface p-4.5 rounded-[32px] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-[#FF5B4A] text-white flex items-center justify-center shadow-md shadow-[#FF5B4A]/25">
             <UtensilsCrossed className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-black text-[#18202B]">Menu Management (Admin)</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black text-[#18202B]">Administration & Settings</h1>
+              <div className="flex items-center bg-[#F3F6FA] p-0.5 rounded-full border border-[#D8E1EC]">
+                <button
+                  type="button"
+                  onClick={() => setActiveAdminTab('dishes')}
+                  className={`px-3 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                    activeAdminTab === 'dishes'
+                      ? 'glass-pill-active font-black'
+                      : 'text-[#697586] hover:text-[#18202B]'
+                  }`}
+                >
+                  Dishes &amp; Menu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveAdminTab('printer')}
+                  className={`px-3 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                    activeAdminTab === 'printer'
+                      ? 'glass-pill-active font-black'
+                      : 'text-[#697586] hover:text-[#18202B]'
+                  }`}
+                >
+                  Printer &amp; Hardware
+                </button>
+              </div>
+            </div>
             <p className="text-xs text-[#697586] font-medium">
-              Manage categories, dishes, prices, and in-stock statuses
+              {activeAdminTab === 'dishes' 
+                ? 'Manage categories, dishes, prices, and in-stock statuses' 
+                : 'Configure countertop thermal printer profiles, 58mm/80mm paper widths, and test prints'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={() => {
-              setEditingCategory(null);
-              setCatName('');
-              setIsCatModalOpen(true);
-            }}
-            className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-          >
-            <FolderPlus className="w-4 h-4 text-[#FF5B4A]" />
-            <span>Add Category</span>
-          </button>
+        {activeAdminTab === 'dishes' && (
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => {
+                setEditingCategory(null);
+                setCatName('');
+                setIsCatModalOpen(true);
+              }}
+              className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <FolderPlus className="w-4 h-4 text-[#FF5B4A]" />
+              <span>Add Category</span>
+            </button>
 
-          <button
-            onClick={handleOpenNewItem}
-            className="px-5 py-2 glass-btn-coral rounded-full text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-md"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Add Dish Item</span>
-          </button>
+            <button
+              onClick={handleOpenNewItem}
+              className="px-5 py-2 glass-btn-coral rounded-full text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-md"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Add Dish Item</span>
+            </button>
 
-          <button
-            onClick={() => setShowResetConfirm(true)}
-            className="px-4 py-2 glass-pill hover:bg-rose-50 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="Restore Original 21 Categories & 86 Items"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Default Menu</span>
-          </button>
-        </div>
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="px-4 py-2 glass-pill hover:bg-rose-50 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Restore Original 21 Categories & 86 Items"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Default Menu</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Category Pills & Search */}
-      <div className="glass-surface p-4 rounded-[32px] space-y-2.5 shrink-0 shadow-sm">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-3.5 top-2.5 text-[#697586]" />
-          <input
-            type="text"
-            placeholder="Search items to edit..."
+      {activeAdminTab === 'printer' ? (
+        <div className="flex-1 overflow-y-auto">
+          <PrinterSettings 
+            settings={printerSettings}
+            setSettings={setPrinterSettings}
+            soundEnabled={soundEnabled}
+            setSoundEnabled={setSoundEnabled}
+            onTriggerPWAInstall={onTriggerPWAInstall}
+            isAppInstalled={isAppInstalled}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Category Pills & Search */}
+          <div className="glass-surface p-4 rounded-[32px] space-y-2.5 shrink-0 shadow-sm">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3.5 top-2.5 text-[#697586]" />
+              <input
+                type="text"
+                placeholder="Search items to edit..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white/70 border border-white/90 rounded-full pl-9 pr-3 py-2 text-xs text-[#18202B] placeholder-[#98A2B3] focus:outline-none focus:border-[#FF5B4A] font-medium shadow-xs"
@@ -424,6 +477,8 @@ export default function MenuManagement({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

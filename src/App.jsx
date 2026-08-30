@@ -50,13 +50,12 @@ export default function App() {
   const [previewBill, setPreviewBill] = useState(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
-  // Bottom Navigation tabs definition
+  // Bottom Navigation tabs definition (4 Core Modules)
   const bottomTabs = [
-    { id: 'billing', label: 'POS Billing', hotkey: 'F1', icon: ShoppingCart },
-    { id: 'daily', label: 'Daily Earnings', hotkey: 'F2', icon: TrendingUp },
-    { id: 'history', label: 'Bill History', hotkey: 'F3', icon: History },
-    { id: 'menu', label: 'Menu Admin', hotkey: 'F4', icon: UtensilsCrossed },
-    { id: 'printer', label: 'Printer Settings', hotkey: 'F5', icon: Printer },
+    { id: 'billing', label: 'POS Billing', shortLabel: 'POS', hotkey: 'F1', icon: ShoppingCart },
+    { id: 'daily', label: 'Daily Earnings', shortLabel: 'Earnings', hotkey: 'F2', icon: TrendingUp },
+    { id: 'history', label: 'Bill History', shortLabel: 'History', hotkey: 'F3', icon: History },
+    { id: 'menu', label: 'Menu Admin', shortLabel: 'Menu', hotkey: 'F4', icon: UtensilsCrossed },
   ];
 
   // Load initial data (Instant local cache + Async Supabase sync)
@@ -103,7 +102,7 @@ export default function App() {
     }
   };
 
-  // Keyboard navigation shortcuts (F1-F5)
+  // Keyboard navigation shortcuts (F1-F4)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F1') {
@@ -118,9 +117,6 @@ export default function App() {
       } else if (e.key === 'F4') {
         e.preventDefault();
         setActiveTab('menu');
-      } else if (e.key === 'F5') {
-        e.preventDefault();
-        setActiveTab('printer');
       }
     };
 
@@ -199,13 +195,8 @@ export default function App() {
                 setCategories={setCategories}
                 items={items}
                 setItems={setItems}
-              />
-            )}
-
-            {activeTab === 'printer' && (
-              <PrinterSettings 
-                settings={printerSettings}
-                setSettings={setPrinterSettings}
+                printerSettings={printerSettings}
+                setPrinterSettings={setPrinterSettings}
                 soundEnabled={soundEnabled}
                 setSoundEnabled={handleSoundChange}
                 onTriggerPWAInstall={triggerInstall}
@@ -214,9 +205,9 @@ export default function App() {
             )}
           </main>
 
-          {/* Floating Frosted Glass Bottom Navigation Bar (Above System Navigation) */}
-          <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-2.5 right-2.5 sm:left-auto sm:right-auto sm:left-1/2 sm:-translate-x-1/2 max-w-2xl w-[calc(100vw-20px)] sm:w-auto glass-surface px-2.5 py-1.5 flex items-center justify-center shadow-2xl z-40 rounded-full border border-white/95 backdrop-blur-2xl">
-            <div className="flex items-center gap-1 sm:gap-2.5 w-full justify-between sm:justify-center">
+          {/* Floating Frosted Glass Bottom Navigation Bar (4 Evenly Distributed Items) */}
+          <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-3 right-3 sm:left-auto sm:right-auto sm:left-1/2 sm:-translate-x-1/2 max-w-lg w-[calc(100vw-24px)] sm:w-auto glass-surface px-2.5 py-1.5 flex items-center justify-center shadow-2xl z-40 rounded-full border border-white/95 backdrop-blur-2xl">
+            <div className="grid grid-cols-4 gap-1.5 sm:flex sm:gap-2.5 w-full">
               {bottomTabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -224,7 +215,7 @@ export default function App() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs ${
+                    className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs ${
                       isActive
                         ? 'glass-pill-active font-black'
                         : 'glass-pill text-[#18202B]'
@@ -232,7 +223,7 @@ export default function App() {
                     title={`Switch to ${tab.label} (${tab.hotkey})`}
                   >
                     <Icon className="w-4 h-4 stroke-[2.2] shrink-0" />
-                    <span className="text-[11px] sm:text-xs font-bold tracking-tight">{tab.label}</span>
+                    <span className="text-[11px] sm:text-xs font-bold tracking-tight">{tab.shortLabel}</span>
                   </button>
                 );
               })}

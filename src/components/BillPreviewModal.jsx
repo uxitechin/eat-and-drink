@@ -17,6 +17,7 @@ export default function BillPreviewModal({
 }) {
   const [paperWidth, setPaperWidth] = useState(printerSettings?.paperWidth || '80mm');
   const [isPrinting, setIsPrinting] = useState(false);
+  const [printStatus, setPrintStatus] = useState('idle'); // 'idle', 'success', 'error'
   const [copied, setCopied] = useState(false);
 
   if (!bill) return null;
@@ -32,12 +33,14 @@ export default function BillPreviewModal({
 
   const handlePrint = async () => {
     setIsPrinting(true);
+    setPrintStatus('idle');
     try {
       await printReceipt(bill, receiptConfig);
+      setPrintStatus('success');
       if (onPrintSuccess) onPrintSuccess();
     } catch (e) {
       console.error(e);
-      alert('Could not trigger thermal printer. Please check printer connection.');
+      setPrintStatus('error');
     } finally {
       setIsPrinting(false);
     }
@@ -130,6 +133,42 @@ export default function BillPreviewModal({
           </div>
         </div>
 
+        {/* Print Feedback Banner */}
+        {printStatus === 'success' && (
+          <div className="mb-2 p-2 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center justify-between animate-pop-in">
+            <div className="flex items-center gap-1.5">
+              <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+              <span>Receipt sent to thermal printer successfully</span>
+            </div>
+            <button onClick={() => setPrintStatus('idle')} className="text-emerald-700 hover:text-emerald-900 p-0.5">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {printStatus === 'error' && (
+          <div className="mb-2 p-2.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center justify-between animate-pop-in">
+            <div className="flex items-center gap-1.5">
+              <X className="w-4 h-4 text-rose-600 stroke-[3]" />
+              <span>Printer not available. (Bill safely stored)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button 
+                onClick={handlePrint}
+                className="px-2.5 py-1 bg-rose-600 text-white rounded-full text-[11px] font-black cursor-pointer hover:bg-rose-700"
+              >
+                RETRY
+              </button>
+              <button 
+                onClick={() => setPrintStatus('idle')}
+                className="px-2 py-1 glass-pill text-rose-700 rounded-full text-[11px] font-bold cursor-pointer"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modal Action Buttons */}
         <div className="pt-2 border-t border-[#D8E1EC]/60 flex items-center justify-between gap-3 shrink-0">
           <button
@@ -166,7 +205,7 @@ export default function BillPreviewModal({
               className="px-6 py-2.5 glass-btn-coral rounded-full text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg"
             >
               <Printer className="w-4 h-4 stroke-[2.5]" />
-              <span>{isPrinting ? 'Printing...' : 'Print Thermal Receipt'}</span>
+              <span>{isPrinting ? 'Sending to Printer...' : 'Print Thermal Receipt'}</span>
             </button>
           </div>
         </div>

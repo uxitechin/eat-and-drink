@@ -46,7 +46,6 @@ export default function Header({
     { id: 'daily', label: 'Daily Earnings', hotkey: 'F2', icon: TrendingUp },
     { id: 'history', label: 'Bill History', hotkey: 'F3', icon: History },
     { id: 'menu', label: 'Menu Admin', hotkey: 'F4', icon: UtensilsCrossed },
-    { id: 'printer', label: 'Printer Settings', hotkey: 'F5', icon: Printer },
   ];
 
   return (
@@ -123,19 +122,6 @@ export default function Header({
 
       {/* Right: Quick Action Controls (Desktop Floating Capsules) */}
       <div className="hidden md:flex items-center gap-2">
-        <button
-          onClick={() => setActiveTab('printer')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'printer'
-              ? 'glass-pill-active font-black'
-              : 'glass-pill text-[#18202B]'
-          }`}
-          title="Printer Configuration"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          <span>Printer</span>
-        </button>
-
         <button
           onClick={() => setActiveTab('menu')}
           className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
