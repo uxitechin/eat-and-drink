@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="100%" height="100%">
+  <!-- Top Chef Hat & Cloche -->
+  <g fill="#000000">
+    <!-- Chef Hat -->
+    <path d="M 170 85 C 160 85 152 75 155 62 C 158 48 175 42 185 50 C 190 35 210 35 215 50 C 225 42 242 48 245 62 C 248 75 240 85 230 85 Z" />
+    <rect x="172" y="86" width="56" height="6" rx="2" />
+    <!-- Cloche cover -->
+    <path d="M 160 115 C 160 95 180 94 200 94 C 220 94 240 95 240 115 Z" />
+    <rect x="150" y="116" width="100" height="4" rx="2" />
+    <circle cx="200" cy="92" r="3" />
+    <!-- Fork left -->
+    <path d="M 142 60 L 144 80 L 147 80 L 147 105 L 145 105 L 145 80 L 148 80 L 150 60 L 148 60 L 146 72 L 144 60 Z" />
+    <!-- Spoon right -->
+    <path d="M 255 60 C 250 60 248 72 253 78 L 253 105 L 256 105 L 256 78 C 261 72 259 60 255 60 Z" />
+  </g>
+  <!-- Circular Arcs -->
+  <path d="M 120 115 A 90 90 0 0 1 280 115" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" />
+  <path d="M 125 190 A 90 90 0 0 0 275 190" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" />
+  <!-- Text: EAT & DRINK -->
+  <text x="200" y="156" font-family="'Impact', 'Arial Black', sans-serif" font-size="36" font-weight="900" text-anchor="middle" fill="#000000" letter-spacing="1">EAT &amp; DRINK</text>
+  <!-- Divider -->
+  <line x1="140" y1="168" x2="260" y2="168" stroke="#000000" stroke-width="1.5" />
+  <circle cx="200" cy="168" r="2.5" fill="#000000" />
+  <!-- Text: MANGALAGIRI -->
+  <text x="200" y="185" font-family="'Arial', 'Helvetica', sans-serif" font-size="13" font-weight="900" text-anchor="middle" fill="#000000" letter-spacing="4">MANGALAGIRI</text>
+</svg>

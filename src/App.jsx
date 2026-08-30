@@ -14,6 +14,8 @@ import MenuManagement from './components/MenuManagement';
 import PrinterSettings from './components/PrinterSettings';
 import BillPreviewModal from './components/BillPreviewModal';
 import StartupAnimation from './components/StartupAnimation';
+import InstallPromptModal from './components/InstallPromptModal';
+import { usePWAInstall } from './hooks/usePWAInstall';
 
 import { 
   getCategories, 
@@ -34,6 +36,9 @@ export default function App() {
   const [showStartup, setShowStartup] = useState(true);
   const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu', 'printer'
   
+  // PWA Installation Hook
+  const { isInstallable, isInstalled, showPrompt, triggerInstall, dismissPrompt } = usePWAInstall();
+
   // App data state
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
@@ -203,6 +208,8 @@ export default function App() {
                 setSettings={setPrinterSettings}
                 soundEnabled={soundEnabled}
                 setSoundEnabled={handleSoundChange}
+                onTriggerPWAInstall={triggerInstall}
+                isAppInstalled={isInstalled}
               />
             )}
           </main>
@@ -234,6 +241,14 @@ export default function App() {
               })}
             </div>
           </nav>
+
+          {/* Custom PWA Install Prompt Banner / Popup */}
+          {showPrompt && !isInstalled && (
+            <InstallPromptModal 
+              onInstall={triggerInstall} 
+              onDismiss={dismissPrompt} 
+            />
+          )}
 
           {/* Bill Preview & Receipt Printing Modal */}
           {isPreviewModalOpen && previewBill && (

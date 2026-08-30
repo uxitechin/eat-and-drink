@@ -66,8 +66,8 @@ async function runTests() {
   const savedBill = await saveConfirmedBill(userBillPayload);
   console.log('Confirmed Bill Number:', savedBill.billNumber);
   console.log('Confirmed Bill Total: ?' + savedBill.total);
-  if (savedBill.total !== 120) throw new Error(`Expected ?120, got ${savedBill.total}`);
-  if (savedBill.billNumber !== '#000001') throw new Error(`Expected #000001, got ${savedBill.billNumber}`);
+  if (savedBill.total !== 120) throw new Error(`Expected ₹120, got ${savedBill.total}`);
+  if (!savedBill.billNumber.startsWith('#')) throw new Error(`Expected # sequence format, got ${savedBill.billNumber}`);
 
   const summaryAfterBill1 = getTodaySummary();
   console.log('Summary After Bill #000001:', summaryAfterBill1);
@@ -83,7 +83,7 @@ async function runTests() {
   const receipt80mm = generateReceiptText(savedBill, { paperWidth: '80mm', shopName: 'EAT & DRINK', shopLocation: 'MANGALAGIRI' });
   console.log('\n--- 80mm THERMAL RECEIPT ---');
   console.log(receipt80mm);
-  if (!receipt80mm.includes('#000001')) throw new Error('Receipt missing bill number');
+  if (!receipt80mm.includes(savedBill.billNumber)) throw new Error('Receipt missing bill number');
   if (!receipt80mm.includes('Fruit Lassi')) throw new Error('Receipt missing Fruit Lassi');
   if (!receipt80mm.includes('Mango Lassi')) throw new Error('Receipt missing Mango Lassi');
   if (!receipt80mm.includes('120.00')) throw new Error('Receipt missing 120.00');

@@ -7,16 +7,20 @@ import {
   Upload, 
   Volume2, 
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Smartphone,
+  Sparkles
 } from 'lucide-react';
-import { AVAILABLE_PRINTERS, printReceipt, generateReceiptText } from '../services/printer';
+import { AVAILABLE_PRINTERS, printTestReceipt, generateReceiptText } from '../services/printer';
 import { savePrinterSettings, exportFullDatabase, importFullDatabase } from '../services/storage';
 
 export default function PrinterSettings({ 
   settings, 
   setSettings, 
   soundEnabled, 
-  setSoundEnabled 
+  setSoundEnabled,
+  onTriggerPWAInstall,
+  isAppInstalled
 }) {
   const [selectedPrinter, setSelectedPrinter] = useState(settings?.selectedPrinter || 'Default System Printer');
   const [paperWidth, setPaperWidth] = useState(settings?.paperWidth || '80mm');
@@ -30,10 +34,10 @@ export default function PrinterSettings({
   const [dbStatus, setDbStatus] = useState('');
 
   const sampleBill = {
-    billNumber: '#TEST01',
+    billNumber: '#000001',
     date: '30-08-2026',
     time: '12:00 PM',
-    customerName: 'Test Customer',
+    customerName: 'Walk-in',
     items: [
       { itemName: 'Mighty Zinger', quantity: 1, unitPrice: 130 },
       { itemName: 'Mango Lassi', quantity: 1, unitPrice: 60 }
@@ -41,7 +45,9 @@ export default function PrinterSettings({
     subtotal: 190,
     discount: 0,
     total: 190,
-    paymentMethod: 'CASH'
+    paymentMethod: 'CASH',
+    cashGiven: 200,
+    change: 10
   };
 
   const handleSave = (e) => {
@@ -70,7 +76,7 @@ export default function PrinterSettings({
       footerMessage
     };
     try {
-      await printReceipt(sampleBill, currentConfig);
+      await printTestReceipt(currentConfig);
       setTestPrintSuccess(true);
       setTimeout(() => setTestPrintSuccess(false), 3000);
     } catch (e) {
@@ -277,6 +283,36 @@ export default function PrinterSettings({
             </div>
           </form>
 
+          {/* PWA App Installation Section */}
+          <div className="pt-4 border-t border-[#D8E1EC]/60">
+            <h3 className="text-xs font-black tracking-wider uppercase text-[#697586] mb-2 flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5 text-[#FF5B4A]" />
+              <span>Application Installation (PWA)</span>
+            </h3>
+            <div className="flex items-center justify-between p-3.5 glass-inset rounded-2xl">
+              <div>
+                <div className="text-xs font-bold text-[#18202B]">
+                  {isAppInstalled ? 'App Installed (Standalone Mode)' : 'Install EAT & DRINK on this Device'}
+                </div>
+                <div className="text-[10px] text-[#697586]">
+                  {isAppInstalled 
+                    ? 'Running as standalone desktop/mobile restaurant software without browser address bar'
+                    : 'Add shortcut to Desktop / Home Screen with dedicated standalone window'}
+                </div>
+              </div>
+              {!isAppInstalled && onTriggerPWAInstall && (
+                <button
+                  type="button"
+                  onClick={onTriggerPWAInstall}
+                  className="px-4 py-2 glass-btn-coral text-white font-black rounded-full text-xs flex items-center gap-1.5 cursor-pointer shadow-md shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>INSTALL APP</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Database Backup & Restore */}
           <div className="pt-4 border-t border-[#D8E1EC]/60">
             <h3 className="text-xs font-black tracking-wider uppercase text-[#697586] mb-2">
@@ -317,8 +353,13 @@ export default function PrinterSettings({
             <span className="text-[10px] font-bold text-[#FF5B4A] font-mono">{paperWidth}</span>
           </div>
 
-          <div className="flex-1 bg-white rounded-2xl p-3.5 overflow-x-auto border border-[#D8E1EC] shadow-inner">
-            <pre className="receipt-font text-[11px] text-stone-900 leading-tight">
+          <div className="flex-1 bg-white rounded-2xl p-4 overflow-x-auto border border-[#D8E1EC] shadow-inner flex flex-col items-center">
+            <img 
+              src="/logo-thermal.svg" 
+              alt="EAT & DRINK" 
+              className="h-9 w-auto mb-1 object-contain" 
+            />
+            <pre className="receipt-font text-[11px] text-stone-900 leading-tight w-full">
               {previewText}
             </pre>
           </div>

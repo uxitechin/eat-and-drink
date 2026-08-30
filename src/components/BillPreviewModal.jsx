@@ -106,18 +106,28 @@ export default function BillPreviewModal({
           </div>
         </div>
 
-        {/* Receipt Preview Area (Crisp White Thermal Paper Style) */}
+        {/* Receipt Preview Area (Crisp White Thermal Paper Simulation) */}
         <div className="my-3.5 flex-1 overflow-y-auto p-4 bg-white rounded-2xl border border-[#D8E1EC] shadow-inner flex flex-col items-center">
-          <pre 
-            id="printable-receipt"
-            className="receipt-font text-[11.5px] leading-tight text-black whitespace-pre tracking-normal w-full"
+          <div 
             style={{ 
-              maxWidth: paperWidth === '58mm' ? '290px' : '380px',
-              fontFamily: '"Courier New", Courier, monospace'
+              maxWidth: paperWidth === '58mm' ? '250px' : '340px',
+              width: '100%'
             }}
+            className="flex flex-col items-center"
           >
-            {receiptFormattedText}
-          </pre>
+            <img 
+              src="/logo-thermal.svg" 
+              alt="EAT & DRINK" 
+              className="h-10 w-auto mb-1.5 object-contain"
+            />
+            <pre 
+              id="printable-receipt"
+              className="receipt-font text-[11px] sm:text-[11.5px] leading-tight text-black whitespace-pre tracking-normal w-full"
+              style={{ fontFamily: '"Courier New", Courier, monospace' }}
+            >
+              {receiptFormattedText}
+            </pre>
+          </div>
         </div>
 
         {/* Modal Action Buttons */}

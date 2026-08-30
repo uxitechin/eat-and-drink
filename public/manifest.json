@@ -1,0 +1,41 @@
+{
+  "short_name": "EAT & DRINK",
+  "name": "EAT & DRINK Restaurant POS",
+  "description": "EAT & DRINK Restaurant Point of Sale System — Mangalagiri",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F3F6FA",
+  "theme_color": "#F3F6FA",
+  "display": "standalone",
+  "orientation": "any",
+  "categories": ["business", "food", "productivity"],
+  "shortcuts": [
+    {
+      "name": "POS Billing",
+      "short_name": "Billing",
+      "description": "Open POS Cashier Billing",
+      "url": "/?tab=billing",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Daily Earnings",
+      "short_name": "Earnings",
+      "description": "View Daily Sales & Earnings",
+      "url": "/?tab=daily",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    }
+  ]
+}
