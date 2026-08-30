@@ -1,12 +1,19 @@
-// EAT & DRINK POS — Service Worker for Fast App Launch & Standalone PWA Mode
-const CACHE_NAME = 'eat-drink-pos-v1';
+// EAT & DRINK POS - Service Worker for Fast App Launch & Standalone PWA Mode
+const CACHE_NAME = 'eat-drink-pos-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.png',
   '/favicon.svg',
+  '/apple-touch-icon.png',
+  '/eat-and-drink.png',
   '/logo.png',
-  '/logo-thermal.svg'
+  '/logo-thermal.svg',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+  '/icons/maskable-icon-192x192.png',
+  '/icons/maskable-icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
