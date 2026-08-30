@@ -25,7 +25,7 @@ import {
   fetchRemoteCategories,
   fetchRemoteItems,
   fetchRemoteBills,
-  syncOfflineBills
+  fetchRemoteDailySummary
 } from './services/storage';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 import { printReceipt } from './services/printer';
@@ -68,14 +68,17 @@ export default function App() {
     if (isSupabaseConfigured) {
       fetchRemoteCategories().then(cats => cats && setCategories(cats));
       fetchRemoteItems().then(itms => itms && setItems(itms));
-      fetchRemoteBills().then(() => setTodaySummary(getTodaySummary()));
-      syncOfflineBills();
+      fetchRemoteBills().then(() => {
+        fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
+      });
 
       // 3. Realtime subscription on bills
       const channel = supabase
         .channel('public:bills')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bills' }, () => {
-          fetchRemoteBills().then(() => setTodaySummary(getTodaySummary()));
+          fetchRemoteBills().then(() => {
+            fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
+          });
         })
         .subscribe();
 
@@ -120,17 +123,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle bill confirmation from cashier
-  const handleConfirmBill = useCallback((billPayload) => {
-    // 1. Save bill and update sales totals in persistent store
-    const savedBill = saveConfirmedBill(billPayload);
+  // Handle bill confirmation from cashier (Supabase Primary)
+  const handleConfirmBill = useCallback(async (billPayload) => {
+    // 1. Save bill in Supabase & local cache
+    const savedBill = await saveConfirmedBill(billPayload);
 
-    // 2. Refresh live today's summary counters
-    setTodaySummary(getTodaySummary());
+    // 2. Refresh live today's summary counters from Supabase
+    const updatedSummary = await fetchRemoteDailySummary();
+    setTodaySummary(updatedSummary);
 
     // 3. Open Bill Preview Modal
     setPreviewBill(savedBill);
     setIsPreviewModalOpen(true);
+    return savedBill;
   }, []);
 
   // Handle direct print from Bill History

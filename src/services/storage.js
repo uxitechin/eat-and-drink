@@ -8,10 +8,9 @@ const KEYS = {
   DAILY_SUMMARIES: 'eat_drink_daily_summaries',
   PRINTER_SETTINGS: 'eat_drink_printer_settings',
   LAST_BILL_SEQ: 'eat_drink_last_bill_seq',
-  OFFLINE_QUEUE: 'eat_drink_offline_queue',
 };
 
-// --- MENU DATA (HYBRID LOCAL-FIRST + SUPABASE) ---
+// --- MENU DATA (SUPABASE PRIMARY + LOCAL FALLBACK) ---
 
 export function getCategories() {
   const data = localStorage.getItem(KEYS.CATEGORIES);
@@ -127,8 +126,30 @@ export function formatTimeDisplay(d = new Date()) {
   return `${hours}:${minutes} ${ampm}`;
 }
 
-// --- BILL SEQUENCE & BILLS ---
-export function getNextBillNumber() {
+// --- RELIABLE SEQUENTIAL BILL NUMBERING ---
+export async function getNextBillNumber() {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('bills')
+        .select('bill_number')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0 && data[0].bill_number) {
+        const match = data[0].bill_number.match(/\d+/);
+        if (match) {
+          const nextSeq = parseInt(match[0], 10) + 1;
+          return `#${String(nextSeq).padStart(6, '0')}`;
+        }
+      }
+      return '#000001';
+    } catch (e) {
+      console.warn('[Supabase] Error getting next bill number from Supabase:', e);
+    }
+  }
+
+  // Fallback to local sequence
   let seq = parseInt(localStorage.getItem(KEYS.LAST_BILL_SEQ) || '0', 10);
   seq += 1;
   localStorage.setItem(KEYS.LAST_BILL_SEQ, String(seq));
@@ -149,14 +170,14 @@ export function saveBills(bills) {
   localStorage.setItem(KEYS.BILLS, JSON.stringify(bills));
 }
 
-// --- SAVE CONFIRMED BILL (ATOMIC SUPABASE PUSH + LOCAL CACHE) ---
-export function saveConfirmedBill(billData) {
+// --- SAVE CONFIRMED BILL (SUPABASE TRANSACTION + ATOMIC LINE ITEMS) ---
+export async function saveConfirmedBill(billData) {
   const now = new Date();
   const dateKey = getTodayDateKey(now);
   const dateDisplay = formatDateDisplay(dateKey);
   const timeDisplay = formatTimeDisplay(now);
 
-  const billNumber = billData.billNumber || getNextBillNumber();
+  const billNumber = billData.billNumber || await getNextBillNumber();
   
   const finalizedBill = {
     id: 'bill_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -166,8 +187,8 @@ export function saveConfirmedBill(billData) {
     discount: Number(billData.discount) || 0,
     total: Number(billData.total) || 0,
     paymentMethod: billData.paymentMethod || 'CASH',
-    cashGiven: billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
-    change: billData.change !== undefined ? Number(billData.change) : undefined,
+    cashGiven: billData.paymentMethod === 'CASH' && billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
+    change: billData.paymentMethod === 'CASH' && billData.change !== undefined ? Number(billData.change) : undefined,
     customerName: billData.customerName || '',
     customerPhone: billData.customerPhone || '',
     dateKey: dateKey,
@@ -177,94 +198,65 @@ export function saveConfirmedBill(billData) {
     createdAt: now.toISOString(),
   };
 
-  // 1. Update local cache immediately (instant UI response)
+  // 1. Insert into Supabase PostgreSQL (Source of Truth)
+  if (isSupabaseConfigured) {
+    try {
+      const { data: billRecord, error: billError } = await supabase
+        .from('bills')
+        .insert({
+          bill_number: finalizedBill.billNumber,
+          subtotal: finalizedBill.subtotal,
+          discount: finalizedBill.discount,
+          total: finalizedBill.total,
+          payment_method: finalizedBill.paymentMethod,
+          cash_given: finalizedBill.cashGiven ?? null,
+          change_given: finalizedBill.change ?? null,
+          customer_name: finalizedBill.customerName || '',
+          customer_phone: finalizedBill.customerPhone || '',
+          bill_date: finalizedBill.dateKey,
+        })
+        .select()
+        .single();
+
+      if (billError) throw billError;
+
+      finalizedBill.id = billRecord.id;
+
+      // 2. Insert line items
+      if (finalizedBill.items && finalizedBill.items.length > 0) {
+        const lineItems = finalizedBill.items.map(it => {
+          const price = it.unitPrice || it.price || 0;
+          return {
+            bill_id: billRecord.id,
+            menu_item_id: it.id?.startsWith('itm_') ? it.id : (it.itemId || null),
+            item_name: it.itemName || it.name,
+            unit_price: price,
+            quantity: it.quantity || 1,
+            item_total: price * (it.quantity || 1),
+          };
+        });
+
+        const { error: itemsError } = await supabase.from('bill_items').insert(lineItems);
+        if (itemsError) throw itemsError;
+      }
+    } catch (err) {
+      console.error('[Supabase] Failed to save bill:', err);
+      throw new Error('Unable to save bill. Please try again.');
+    }
+  }
+
+  // 3. Update local cache for instant fast UI responsiveness
   const allBills = getAllBills();
   allBills.unshift(finalizedBill);
   saveBills(allBills);
 
-  // 2. Update local Daily Summary
+  // 4. Update local Daily Summary
   updateDailySummary(dateKey, finalizedBill);
-
-  // 3. Asynchronously push to Supabase PostgreSQL
-  if (isSupabaseConfigured) {
-    pushBillToSupabase(finalizedBill).catch(err => {
-      console.warn('[Supabase] Offline queueing bill:', err.message);
-      enqueueOfflineBill(finalizedBill);
-    });
-  }
 
   return finalizedBill;
 }
 
-// Helper: Push bill + line items to Supabase
-async function pushBillToSupabase(bill) {
-  const { data: billRecord, error: billError } = await supabase
-    .from('bills')
-    .insert({
-      bill_number: bill.billNumber,
-      subtotal: bill.subtotal,
-      discount: bill.discount,
-      total: bill.total,
-      payment_method: bill.paymentMethod,
-      cash_given: bill.cashGiven ?? null,
-      change_given: bill.change ?? null,
-      customer_name: bill.customerName || '',
-      customer_phone: bill.customerPhone || '',
-      bill_date: bill.dateKey,
-    })
-    .select()
-    .single();
-
-  if (billError) throw billError;
-
-  if (bill.items && bill.items.length > 0) {
-    const lineItems = bill.items.map(it => {
-      const price = it.unitPrice || it.price || 0;
-      return {
-        bill_id: billRecord.id,
-        menu_item_id: it.id?.startsWith('itm_') ? it.id : null,
-        item_name: it.itemName || it.name,
-        unit_price: price,
-        quantity: it.quantity || 1,
-        item_total: price * (it.quantity || 1),
-      };
-    });
-
-    const { error: itemsError } = await supabase.from('bill_items').insert(lineItems);
-    if (itemsError) throw itemsError;
-  }
-
-  return billRecord;
-}
-
-// Offline queue helpers
-function enqueueOfflineBill(bill) {
-  try {
-    const queue = JSON.parse(localStorage.getItem(KEYS.OFFLINE_QUEUE) || '[]');
-    queue.push(bill);
-    localStorage.setItem(KEYS.OFFLINE_QUEUE, JSON.stringify(queue));
-  } catch (e) {}
-}
-
-export async function syncOfflineBills() {
-  if (!isSupabaseConfigured) return;
-  try {
-    const queue = JSON.parse(localStorage.getItem(KEYS.OFFLINE_QUEUE) || '[]');
-    if (queue.length === 0) return;
-
-    const remaining = [];
-    for (const bill of queue) {
-      try {
-        await pushBillToSupabase(bill);
-      } catch (err) {
-        remaining.push(bill);
-      }
-    }
-    localStorage.setItem(KEYS.OFFLINE_QUEUE, JSON.stringify(remaining));
-  } catch (e) {}
-}
-
-// Fetch all bills from Supabase with fallback
+// Fetch all bills from Supabase with line items
 export async function fetchRemoteBills() {
   if (!isSupabaseConfigured) return getAllBills();
   try {
@@ -307,7 +299,59 @@ export async function fetchRemoteBills() {
   return getAllBills();
 }
 
-// --- DAILY SUMMARIES ---
+// Fetch daily sales summary directly from Supabase
+export async function fetchRemoteDailySummary(dateKey = getTodayDateKey()) {
+  if (!isSupabaseConfigured) return getTodaySummary();
+  try {
+    const { data: bills, error } = await supabase
+      .from('bills')
+      .select('*, bill_items(*)')
+      .eq('bill_date', dateKey);
+
+    if (error) throw error;
+
+    let totalSales = 0;
+    let cashSales = 0;
+    let upiSales = 0;
+    let billCount = bills?.length || 0;
+    let itemCount = 0;
+
+    (bills || []).forEach(b => {
+      const amt = Number(b.total) || 0;
+      totalSales += amt;
+      if (b.payment_method === 'CASH') {
+        cashSales += amt;
+      } else {
+        upiSales += amt;
+      }
+      (b.bill_items || []).forEach(it => {
+        itemCount += Number(it.quantity) || 1;
+      });
+    });
+
+    const summary = {
+      dateKey,
+      dateDisplay: formatDateDisplay(dateKey),
+      totalSales,
+      cashSales,
+      upiSales,
+      billCount,
+      itemCount,
+      avgBill: billCount > 0 ? Math.round(totalSales / billCount) : 0,
+    };
+
+    const allSummaries = getAllDailySummaries();
+    allSummaries[dateKey] = summary;
+    saveDailySummaries(allSummaries);
+
+    return summary;
+  } catch (err) {
+    console.warn('[Supabase] Daily summary fetch error, using local calculation:', err.message);
+    return getTodaySummary();
+  }
+}
+
+// --- DAILY SUMMARIES LOCAL CACHE HELPERS ---
 export function getAllDailySummaries() {
   const data = localStorage.getItem(KEYS.DAILY_SUMMARIES);
   if (!data) return {};
@@ -397,7 +441,6 @@ export async function clearAllBillsAndResetSales() {
   // 1. Clear local storage records
   localStorage.removeItem(KEYS.BILLS);
   localStorage.removeItem(KEYS.DAILY_SUMMARIES);
-  localStorage.removeItem(KEYS.OFFLINE_QUEUE);
   localStorage.setItem(KEYS.LAST_BILL_SEQ, '0');
 
   // 2. Clear Supabase tables if configured
@@ -416,7 +459,7 @@ export async function clearAllBillsAndResetSales() {
 // --- DATABASE BACKUP / RESTORE ---
 export function exportFullDatabase() {
   return {
-    version: '2.0 (Supabase Ready)',
+    version: '2.0 (Supabase Powered)',
     exportedAt: new Date().toISOString(),
     categories: getCategories(),
     items: getItems(),

@@ -170,9 +170,12 @@ export default function BillingDashboard({
     return cartItems.reduce((sum, it) => sum + it.quantity, 0);
   }, [cartItems]);
 
-  // Confirm Bill Action
-  const handleConfirm = () => {
-    if (cartItems.length === 0) return;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  // Confirm Bill Action (Async with double-click protection)
+  const handleConfirm = async () => {
+    if (cartItems.length === 0 || isSubmitting) return;
 
     // Validate Cash Given if Cash payment is selected
     if (paymentMethod === 'CASH' && cashTendered !== '') {
@@ -183,8 +186,7 @@ export default function BillingDashboard({
       }
     }
     setCashError('');
-
-    if (soundEnabled) playSuccess();
+    setSubmitError('');
 
     const tenderedNum = paymentMethod === 'CASH' && cashTendered !== '' ? Number(cashTendered) : undefined;
     const changeAmt = tenderedNum !== undefined && tenderedNum >= grandTotal ? tenderedNum - grandTotal : undefined;
@@ -208,16 +210,26 @@ export default function BillingDashboard({
       customerPhone: customerPhone.trim()
     };
 
-    onConfirmBill(billPayload);
+    setIsSubmitting(true);
+    try {
+      await onConfirmBill(billPayload);
 
-    // Reset local billing state
-    setCartItems([]);
-    setDiscountValue(0);
-    setCashTendered('');
-    setCashError('');
-    setCustomerName('');
-    setCustomerPhone('');
-    setIsMobileCartOpen(false);
+      if (soundEnabled) playSuccess();
+
+      // Reset local billing state on SUCCESS only
+      setCartItems([]);
+      setDiscountValue(0);
+      setCashTendered('');
+      setCashError('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setIsMobileCartOpen(false);
+    } catch (err) {
+      setSubmitError('Unable to save bill. Please try again.');
+      alert('Unable to save bill. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const activeCategoryObj = categories.find(c => c.id === selectedCategory);
@@ -460,16 +472,16 @@ export default function BillingDashboard({
         {/* Confirm Bill Button */}
         <button
           type="button"
-          disabled={cartItems.length === 0}
+          disabled={cartItems.length === 0 || isSubmitting}
           onClick={handleConfirm}
           className={`w-full py-3.5 px-4 rounded-full font-black text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] ${
-            cartItems.length > 0
+            cartItems.length > 0 && !isSubmitting
               ? 'glass-btn-coral cursor-pointer'
               : 'bg-[#D8E1EC] text-[#98A2B3] cursor-not-allowed border border-[#D8E1EC]'
           }`}
         >
-          <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
-          <span>CONFIRM BILL • ₹{grandTotal.toFixed(2)}</span>
+          <CheckCircle2 className={`w-5 h-5 stroke-[2.5] ${isSubmitting ? 'animate-spin' : ''}`} />
+          <span>{isSubmitting ? 'SAVING TO SUPABASE...' : `CONFIRM BILL • ₹${grandTotal.toFixed(2)}`}</span>
         </button>
       </div>
     </div>
