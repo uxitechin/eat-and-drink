@@ -1,23 +1,27 @@
 import React from 'react';
-import { Download, X, Smartphone, Sparkles } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 
 export default function InstallPromptModal({ onInstall, onDismiss }) {
   return (
-    <div className="fixed bottom-18 sm:bottom-20 right-4 sm:right-6 z-50 animate-pop-in max-w-sm w-[calc(100vw-32px)]">
+    <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-50 animate-pop-in max-w-sm w-[calc(100vw-32px)]">
       <div className="glass-surface p-4.5 rounded-[32px] shadow-2xl border border-white/95 flex flex-col gap-3">
         
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#FF5B4A] text-white flex items-center justify-center shadow-md shadow-[#FF5B4A]/25 shrink-0">
-              <Smartphone className="w-6 h-6 stroke-[2.2]" />
+            <div className="bg-[#0f131a] px-2.5 py-1.5 rounded-2xl flex items-center justify-center border border-white/20 shadow-md shrink-0">
+              <img 
+                src="/logo.png" 
+                alt="EAT & DRINK" 
+                className="h-7 w-auto object-contain" 
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-black text-[#18202B]">Install EAT & DRINK</h3>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#FF5B4A]/15 text-[#FF5B4A]">PWA</span>
+                <h3 className="text-sm font-black text-[#18202B]">EAT &amp; DRINK</h3>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#FF5B4A]/15 text-[#FF5B4A]">MANGALAGIRI</span>
               </div>
               <p className="text-[11px] text-[#697586] font-medium leading-tight mt-0.5">
-                Install EAT & DRINK on this device for a faster app-like experience.
+                Install EAT &amp; DRINK on this device for a faster app-like experience.
               </p>
             </div>
           </div>

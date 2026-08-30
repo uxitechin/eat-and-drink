@@ -591,7 +591,7 @@ export default function BillingDashboard({
         </div>
 
         {/* 4. Menu Items Grid (Frosted Glass Cards — Pure Typography, Orange Price & Button) */}
-        <div className="flex-1 overflow-y-auto pr-1 py-1">
+        <div className="flex-1 overflow-y-auto pr-1 py-1 pb-40 lg:pb-4">
           {filteredItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-[#98A2B3] py-16 text-center">
               <ShoppingBag className="w-12 h-12 mb-3 text-[#D8E1EC] stroke-[1.5]" />
@@ -672,39 +672,29 @@ export default function BillingDashboard({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* MOBILE FLOATING CART ACTION BAR                      */}
+      {/* MOBILE FLOATING CART BUTTON (Fixed Above Bottom Nav) */}
       {/* ---------------------------------------------------- */}
-      <div className="lg:hidden col-span-12 fixed bottom-3 left-3 right-3 z-30">
+      <div className="lg:hidden fixed right-4 bottom-[calc(72px+max(10px,env(safe-area-inset-bottom)))] z-40">
         <button
           onClick={() => setIsMobileCartOpen(true)}
-          className={`w-full py-3.5 px-4 rounded-full flex items-center justify-between shadow-2xl transition-all active:scale-[0.98] cursor-pointer ${
+          className={`flex items-center gap-2.5 px-4.5 py-3 rounded-full shadow-2xl transition-all active:scale-95 cursor-pointer border border-white/95 ${
             cartItems.length > 0
-              ? 'glass-btn-coral font-black'
-              : 'glass-surface font-bold'
+              ? 'glass-btn-coral font-black shadow-[#FF5B4A]/30'
+              : 'glass-surface font-bold text-[#18202B] shadow-black/10'
           }`}
+          title="Open Active Bill"
         >
-          <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              cartItems.length > 0 ? 'bg-black/20 text-white' : 'bg-[#D8E1EC] text-[#697586]'
-            }`}>
-              <ShoppingBag className="w-4 h-4 stroke-[2.5]" />
-            </div>
-            <div className="text-left">
-              <div className="text-xs uppercase tracking-wider font-black">
-                {cartItems.length > 0 ? 'View Active Bill' : 'Cart Empty'}
-              </div>
-              <div className="text-[10px] opacity-80">
-                {totalCartCount} {totalCartCount === 1 ? 'item' : 'items'} in order
-              </div>
-            </div>
+          <div className="relative flex items-center justify-center">
+            <ShoppingBag className="w-5 h-5 stroke-[2.5]" />
+            {totalCartCount > 0 && (
+              <span className="absolute -top-2.5 -right-2.5 bg-black text-white text-[10px] font-black rounded-full h-4.5 min-w-[18px] px-1 flex items-center justify-center border border-white/40 shadow-sm">
+                {totalCartCount}
+              </span>
+            )}
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-base font-black font-mono">
-              ₹{grandTotal.toFixed(2)}
-            </span>
-            <ArrowRight className="w-4 h-4 stroke-[3]" />
-          </div>
+          <span className="text-xs font-black">
+            {cartItems.length > 0 ? `CART • ₹${grandTotal.toFixed(2)}` : 'CART (0)'}
+          </span>
         </button>
       </div>
 

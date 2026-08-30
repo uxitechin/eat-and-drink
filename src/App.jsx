@@ -166,8 +166,8 @@ export default function App() {
             onReplayIntro={() => setShowStartup(true)}
           />
 
-          {/* Main Content Area */}
-          <main className="flex-1 flex overflow-hidden">
+          {/* Main Content Area (With bottom padding for floating navigation on mobile) */}
+          <main className="flex-1 flex overflow-hidden pb-18 sm:pb-0">
             {activeTab === 'billing' && (
               <BillingDashboard 
                 categories={categories}
@@ -214,9 +214,9 @@ export default function App() {
             )}
           </main>
 
-          {/* Frosted Glass Bottom Navigation Bar */}
-          <nav className="shrink-0 glass-surface px-4 py-2 flex items-center justify-center shadow-lg z-30 border-t border-white/90">
-            <div className="flex items-center gap-2 max-w-4xl w-full justify-around sm:justify-center sm:gap-3.5">
+          {/* Floating Frosted Glass Bottom Navigation Bar (Above System Navigation) */}
+          <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-2.5 right-2.5 sm:left-auto sm:right-auto sm:left-1/2 sm:-translate-x-1/2 max-w-2xl w-[calc(100vw-20px)] sm:w-auto glass-surface px-2.5 py-1.5 flex items-center justify-center shadow-2xl z-40 rounded-full border border-white/95 backdrop-blur-2xl">
+            <div className="flex items-center gap-1 sm:gap-2.5 w-full justify-between sm:justify-center">
               {bottomTabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -224,18 +224,15 @@ export default function App() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs ${
+                    className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs ${
                       isActive
                         ? 'glass-pill-active font-black'
                         : 'glass-pill text-[#18202B]'
                     }`}
                     title={`Switch to ${tab.label} (${tab.hotkey})`}
                   >
-                    <Icon className="w-4 h-4 stroke-[2.2]" />
-                    <span className="hidden sm:inline">{tab.label}</span>
-                    <span className={`hidden md:inline text-[9px] px-1.5 py-0.2 rounded font-mono ${isActive ? 'bg-black/20 text-white' : 'bg-[#D8E1EC]/60 text-[#697586]'}`}>
-                      {tab.hotkey}
-                    </span>
+                    <Icon className="w-4 h-4 stroke-[2.2] shrink-0" />
+                    <span className="text-[11px] sm:text-xs font-bold tracking-tight">{tab.label}</span>
                   </button>
                 );
               })}
