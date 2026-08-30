@@ -205,30 +205,32 @@ export default function App() {
             )}
           </main>
 
-          {/* Floating Frosted Glass Bottom Navigation Bar (4 Evenly Distributed Items) */}
-          <nav className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-3 right-3 sm:left-auto sm:right-auto sm:left-1/2 sm:-translate-x-1/2 max-w-lg w-[calc(100vw-24px)] sm:w-auto glass-surface px-2.5 py-1.5 flex items-center justify-center shadow-2xl z-40 rounded-full border border-white/95 backdrop-blur-2xl">
-            <div className="grid grid-cols-4 gap-1.5 sm:flex sm:gap-2.5 w-full">
-              {bottomTabs.map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs ${
-                      isActive
-                        ? 'glass-pill-active font-black'
-                        : 'glass-pill text-[#18202B]'
-                    }`}
-                    title={`Switch to ${tab.label} (${tab.hotkey})`}
-                  >
-                    <Icon className="w-4 h-4 stroke-[2.2] shrink-0" />
-                    <span className="text-[11px] sm:text-xs font-bold tracking-tight">{tab.shortLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
+          {/* Floating Frosted Glass Bottom Navigation Bar (Guaranteed Centered 4 Items) */}
+          <div className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-0 right-0 z-40 flex justify-center px-3 pointer-events-none">
+            <nav className="w-full max-w-md sm:max-w-lg glass-surface px-2.5 py-1.5 rounded-full border border-white/95 shadow-2xl backdrop-blur-2xl pointer-events-auto">
+              <div className="grid grid-cols-4 gap-1.5 w-full">
+                {bottomTabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center justify-center gap-1 sm:gap-2 py-2 px-1 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 shadow-xs w-full ${
+                        isActive
+                          ? 'glass-btn-coral font-black'
+                          : 'glass-pill text-[#18202B]'
+                      }`}
+                      title={`Switch to ${tab.label} (${tab.hotkey})`}
+                    >
+                      <Icon className="w-4 h-4 stroke-[2.2] shrink-0" />
+                      <span className="text-[11px] sm:text-xs font-bold truncate">{tab.shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          </div>
 
           {/* Custom PWA Install Prompt Banner / Popup */}
           {showPrompt && !isInstalled && (
