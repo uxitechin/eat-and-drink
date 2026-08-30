@@ -1,18 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Printer, 
   Check, 
-  FileText, 
-  Download, 
-  Upload, 
-  Volume2, 
-  CheckCircle2,
+  Bluetooth, 
+  BluetoothConnected, 
+  BluetoothOff, 
+  RefreshCw, 
+  Trash2, 
   AlertCircle,
-  Smartphone,
-  Sparkles
+  FileText,
+  Download,
+  Upload,
+  CheckCircle2,
+  Sliders
 } from 'lucide-react';
-import { AVAILABLE_PRINTERS, printTestReceipt, generateReceiptText } from '../services/printer';
-import { savePrinterSettings, exportFullDatabase, importFullDatabase } from '../services/storage';
+import { bluetoothPrinter, printTestReceipt } from '../services/printer';
+import { exportFullDatabase, importFullDatabase } from '../services/storage';
 
 export default function PrinterSettings({ 
   settings, 
@@ -22,68 +25,108 @@ export default function PrinterSettings({
   onTriggerPWAInstall,
   isAppInstalled
 }) {
-  const [selectedPrinter, setSelectedPrinter] = useState(settings?.selectedPrinter || 'Default System Printer');
-  const [paperWidth, setPaperWidth] = useState(settings?.paperWidth || '80mm');
-  const [shopName, setShopName] = useState(settings?.shopName || 'EAT & DRINK');
-  const [shopLocation, setShopLocation] = useState(settings?.shopLocation || 'MANGALAGIRI');
-  const [footerMessage, setFooterMessage] = useState(settings?.footerMessage || 'THANK YOU! VISIT AGAIN');
-  const [autoPrint, setAutoPrint] = useState(settings?.autoPrint || false);
-
+  const [printerConfig, setPrinterConfig] = useState(bluetoothPrinter.getSavedConfig());
+  const [printerStatus, setPrinterStatus] = useState(bluetoothPrinter.getStatus());
+  const [paperWidth, setPaperWidth] = useState(printerConfig?.paperWidth || settings?.paperWidth || '80mm');
+  
+  const [isPairing, setIsPairing] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [testPrintLoading, setTestPrintLoading] = useState(false);
   const [testPrintSuccess, setTestPrintSuccess] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [dbStatus, setDbStatus] = useState('');
 
-  const sampleBill = {
-    billNumber: '#000001',
-    date: '30-08-2026',
-    time: '12:00 PM',
-    customerName: 'Walk-in',
-    items: [
-      { itemName: 'Mighty Zinger', quantity: 1, unitPrice: 130 },
-      { itemName: 'Mango Lassi', quantity: 1, unitPrice: 60 }
-    ],
-    subtotal: 190,
-    discount: 0,
-    total: 190,
-    paymentMethod: 'CASH',
-    cashGiven: 200,
-    change: 10
-  };
+  // Subscribe to Bluetooth printer connection status changes
+  useEffect(() => {
+    const unsubscribe = bluetoothPrinter.onStatusChange((status) => {
+      setPrinterStatus(status);
+      setPrinterConfig(bluetoothPrinter.getSavedConfig());
+    });
+    return unsubscribe;
+  }, []);
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const newSettings = {
-      selectedPrinter,
-      paperWidth,
-      shopName: shopName.trim() || 'EAT & DRINK',
-      shopLocation: shopLocation.trim() || 'MANGALAGIRI',
-      footerMessage: footerMessage.trim() || 'THANK YOU! VISIT AGAIN',
-      autoPrint,
-      soundEnabled
+  // Update paper width selection locally
+  const handlePaperWidthChange = (width) => {
+    setPaperWidth(width);
+    const updated = {
+      ...(printerConfig || {}),
+      paperWidth: width
     };
-    setSettings(newSettings);
-    savePrinterSettings(newSettings);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
-  };
-
-  const handleTestPrint = async () => {
-    const currentConfig = {
-      selectedPrinter,
-      paperWidth,
-      shopName,
-      shopLocation,
-      footerMessage
-    };
-    try {
-      await printTestReceipt(currentConfig);
-      setTestPrintSuccess(true);
-      setTimeout(() => setTestPrintSuccess(false), 3000);
-    } catch (e) {
-      alert('Error triggering print. Please verify printer connectivity.');
+    if (printerConfig) {
+      bluetoothPrinter.saveConfig(updated);
+      setPrinterConfig(updated);
+    }
+    if (setSettings) {
+      setSettings(prev => ({ ...prev, paperWidth: width }));
     }
   };
 
+  // 1. One-time Setup: Pair New Bluetooth Printer
+  const handleConnectPrinter = async () => {
+    setIsPairing(true);
+    setErrorMessage('');
+    try {
+      const config = await bluetoothPrinter.pairNewPrinter(paperWidth);
+      setPrinterConfig(config);
+      setPrinterStatus('connected');
+    } catch (err) {
+      console.warn('Bluetooth pairing cancelled or failed:', err);
+      if (err.name !== 'NotFoundError') {
+        setErrorMessage(err.message || 'Could not connect to Bluetooth printer.');
+      }
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  // 2. Reconnect Existing Saved Printer
+  const handleReconnect = async () => {
+    setIsReconnecting(true);
+    setErrorMessage('');
+    try {
+      const char = await bluetoothPrinter.autoReconnect();
+      if (char) {
+        setPrinterStatus('connected');
+      } else {
+        setErrorMessage('Printer is offline or turned off. Please ensure Bluetooth is enabled.');
+      }
+    } catch (err) {
+      setErrorMessage('Could not reconnect to thermal printer.');
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  // 3. Disconnect / Forget Printer
+  const handleForget = () => {
+    bluetoothPrinter.forgetPrinter();
+    setPrinterConfig(null);
+    setPrinterStatus('unconfigured');
+  };
+
+  // 4. Test Print (ESC/POS Slip)
+  const handleTestPrint = async () => {
+    setTestPrintLoading(true);
+    setErrorMessage('');
+    setTestPrintSuccess(false);
+    try {
+      await printTestReceipt({ paperWidth });
+      setTestPrintSuccess(true);
+      setTimeout(() => setTestPrintSuccess(false), 3500);
+    } catch (err) {
+      if (err.code === 'NO_PRINTER_CONFIGURED') {
+        setErrorMessage('No thermal printer is configured on this device yet. Click "Connect Bluetooth Printer" above.');
+      } else if (err.code === 'PRINTER_OFFLINE') {
+        setErrorMessage('Printer is offline. Please power on the printer and click "Reconnect".');
+      } else {
+        setErrorMessage('Test print failed: ' + (err.message || 'Check printer connection.'));
+      }
+    } finally {
+      setTestPrintLoading(false);
+    }
+  };
+
+  // Database backup handlers
   const handleExportDB = () => {
     const db = exportFullDatabase();
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(db, null, 2));
@@ -93,278 +136,240 @@ export default function PrinterSettings({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setDbStatus('Backup downloaded successfully');
+    setDbStatus('Database backup exported successfully');
     setTimeout(() => setDbStatus(''), 3000);
   };
 
   const handleImportDB = (e) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (evt) => {
       try {
-        const json = JSON.parse(event.target.result);
-        importFullDatabase(json);
-        alert('Database restored successfully! Reloading...');
-        window.location.reload();
+        const json = JSON.parse(evt.target.result);
+        const res = importFullDatabase(json);
+        if (res.success) {
+          setDbStatus('Database imported successfully! Refreshing...');
+          setTimeout(() => window.location.reload(), 1200);
+        } else {
+          alert('Invalid backup file format.');
+        }
       } catch (err) {
-        alert('Invalid backup JSON file.');
+        alert('Could not read backup file.');
       }
     };
     reader.readAsText(file);
   };
 
-  const previewText = generateReceiptText(sampleBill, {
-    paperWidth,
-    shopName,
-    shopLocation,
-    footerMessage
-  });
-
   return (
-    <div className="flex-1 p-4 overflow-y-auto space-y-4 max-w-6xl mx-auto w-full select-none">
-      {/* Top Banner */}
-      <div className="glass-surface p-4.5 rounded-[32px] flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[#FF5B4A] text-white flex items-center justify-center shadow-md shadow-[#FF5B4A]/25">
-            <Printer className="w-5 h-5" />
+    <div className="space-y-4 max-w-4xl mx-auto w-full select-none pb-12 animate-pop-in">
+      
+      {/* ---------------------------------------------------- */}
+      {/* 1. BLUETOOTH THERMAL PRINTER CARD                    */}
+      {/* ---------------------------------------------------- */}
+      <div className="glass-surface p-5 sm:p-6 rounded-[36px] shadow-sm border border-white/95 flex flex-col gap-4">
+        
+        {/* Header with Live Status Dot */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#D8E1EC]/60">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#18202B] text-white flex items-center justify-center shadow-md">
+              <Printer className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-[#18202B]">Bluetooth Thermal Printer</h2>
+              <p className="text-xs text-[#697586] font-medium">
+                One-time device pairing � Automatic background reconnect
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-base font-black text-[#18202B]">Printer & System Settings</h1>
-            <p className="text-xs text-[#697586] font-medium">
-              Configure thermal receipt printer profiles, paper sizes (58mm/80mm), and templates
-            </p>
+
+          {/* Connection Status Badge */}
+          <div className="flex items-center gap-2">
+            {printerStatus === 'connected' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>CONNECTED (Ready)</span>
+              </span>
+            )}
+            {printerStatus === 'reconnecting' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-300 shadow-xs">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Reconnecting...</span>
+              </span>
+            )}
+            {printerStatus === 'offline' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-300 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <span>Printer Offline</span>
+              </span>
+            )}
+            {printerStatus === 'unconfigured' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#D8E1EC]/50 text-[#697586] border border-[#D8E1EC]">
+                <span>Not Configured</span>
+              </span>
+            )}
           </div>
         </div>
 
-        {savedSuccess && (
-          <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold animate-pop-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>Settings Saved!</span>
+        {/* Error / Warning Alert */}
+        {errorMessage && (
+          <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between animate-pop-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+            <button onClick={() => setErrorMessage('')} className="text-rose-600 hover:text-rose-900 font-black">
+              &times;
+            </button>
           </div>
         )}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Form: Settings (7 cols) */}
-        <div className="lg:col-span-7 glass-surface p-5 rounded-[32px] space-y-4 shadow-sm">
-          <form onSubmit={handleSave} className="space-y-4">
-            {/* Connected Printer Selection */}
+        {/* Success Alert */}
+        {testPrintSuccess && (
+          <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-pop-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Test slip sent directly to thermal printer successfully!</span>
+          </div>
+        )}
+
+        {/* Active Device Info & Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          
+          {/* Left: Device Specs Box */}
+          <div className="p-4 rounded-3xl bg-white/70 border border-white/90 flex flex-col justify-between space-y-2.5 shadow-xs">
             <div>
-              <label className="block text-xs font-bold text-[#697586] uppercase tracking-wider mb-1.5">
-                Connected Thermal Printer
-              </label>
-              <select
-                value={selectedPrinter}
-                onChange={(e) => setSelectedPrinter(e.target.value)}
-                className="w-full bg-white/70 border border-white/90 rounded-2xl p-2.5 text-xs text-[#18202B] font-bold focus:outline-none focus:border-[#FF5B4A] shadow-xs"
-              >
-                {AVAILABLE_PRINTERS.map(p => (
-                  <option key={p.id} value={p.name}>
-                    {p.name} ({p.status})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-[#98A2B3] mt-1 font-medium">
-                Supports EPSON TM-T82, XPrinter, POS-80, POS-58 and standard Windows thermal drivers
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#697586]">Configured Hardware</span>
+              <h3 className="text-sm font-black text-[#18202B] mt-0.5">
+                {printerConfig?.name || 'No Bluetooth printer paired on this device'}
+              </h3>
+              <p className="text-xs text-[#697586] mt-0.5">
+                {printerConfig ? `Protocol: Direct ESC/POS � Device ID: ${printerConfig.id.substring(0, 12)}...` : 'Pair your 58mm or 80mm printer once.'}
               </p>
             </div>
 
-            {/* Paper Width Selection */}
-            <div>
-              <label className="block text-xs font-bold text-[#697586] uppercase tracking-wider mb-1.5">
-                Receipt Paper Width
-              </label>
-              <div className="grid grid-cols-2 gap-3">
+            {/* Paper Width Pills */}
+            <div className="pt-2 border-t border-[#D8E1EC]/60 flex items-center justify-between">
+              <span className="text-xs font-bold text-[#18202B]">Paper Roll Width:</span>
+              <div className="flex items-center bg-[#F3F6FA] p-0.5 rounded-full border border-[#D8E1EC]">
                 <button
                   type="button"
-                  onClick={() => setPaperWidth('58mm')}
-                  className={`p-3.5 rounded-[22px] text-left font-bold transition-all cursor-pointer ${
+                  onClick={() => handlePaperWidthChange('58mm')}
+                  className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer ${
                     paperWidth === '58mm'
-                      ? 'glass-pill-active'
-                      : 'glass-pill text-[#18202B]'
+                      ? 'glass-pill-active font-black'
+                      : 'text-[#697586] hover:text-[#18202B]'
                   }`}
                 >
-                  <div className="text-xs font-black">58mm Thermal (Mini)</div>
-                  <div className="text-[10px] font-normal opacity-80 mt-0.5">Compact receipt format (32 columns)</div>
+                  58mm (32 col)
                 </button>
-
                 <button
                   type="button"
-                  onClick={() => setPaperWidth('80mm')}
-                  className={`p-3.5 rounded-[22px] text-left font-bold transition-all cursor-pointer ${
+                  onClick={() => handlePaperWidthChange('80mm')}
+                  className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer ${
                     paperWidth === '80mm'
-                      ? 'glass-pill-active'
-                      : 'glass-pill text-[#18202B]'
+                      ? 'glass-pill-active font-black'
+                      : 'text-[#697586] hover:text-[#18202B]'
                   }`}
                 >
-                  <div className="text-xs font-black">80mm Thermal (Standard POS)</div>
-                  <div className="text-[10px] font-normal opacity-80 mt-0.5">Full restaurant receipt (44 columns)</div>
+                  80mm (48 col)
                 </button>
               </div>
             </div>
+          </div>
 
-            {/* Shop Brand Header & Location */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-[#697586] uppercase tracking-wider mb-1">
-                  Brand Header
-                </label>
-                <input
-                  type="text"
-                  value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
-                  className="w-full bg-white/70 border border-white/90 rounded-2xl p-2.5 text-xs text-[#18202B] font-bold focus:outline-none focus:border-[#FF5B4A] shadow-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#697586] uppercase tracking-wider mb-1">
-                  Location Subtitle
-                </label>
-                <input
-                  type="text"
-                  value={shopLocation}
-                  onChange={(e) => setShopLocation(e.target.value)}
-                  className="w-full bg-white/70 border border-white/90 rounded-2xl p-2.5 text-xs text-[#18202B] font-bold focus:outline-none focus:border-[#FF5B4A] shadow-xs"
-                />
-              </div>
-            </div>
-
-            {/* Receipt Footer Message */}
-            <div>
-              <label className="block text-xs font-bold text-[#697586] uppercase tracking-wider mb-1">
-                Receipt Footer Greeting
-              </label>
-              <input
-                type="text"
-                value={footerMessage}
-                onChange={(e) => setFooterMessage(e.target.value)}
-                className="w-full bg-white/70 border border-white/90 rounded-2xl p-2.5 text-xs text-[#18202B] font-medium focus:outline-none focus:border-[#FF5B4A] shadow-xs"
-              />
-            </div>
-
-            {/* Sound Toggle */}
-            <div className="flex items-center justify-between p-3.5 glass-inset rounded-2xl">
-              <div className="flex items-center gap-2.5">
-                <Volume2 className="w-4 h-4 text-[#FF5B4A]" />
-                <div>
-                  <div className="text-xs font-bold text-[#18202B]">Cashier Sound Feedback</div>
-                  <div className="text-[10px] text-[#697586]">Audio chimes on item add and bill confirmation</div>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={soundEnabled}
-                onChange={(e) => setSoundEnabled(e.target.checked)}
-                className="w-4 h-4 text-[#FF5B4A] rounded focus:ring-[#FF5B4A] accent-[#FF5B4A] cursor-pointer"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-3 border-t border-[#D8E1EC]/60">
+          {/* Right: Actions Box */}
+          <div className="p-4 rounded-3xl bg-white/70 border border-white/90 flex flex-col justify-between space-y-2.5 shadow-xs">
+            <span className="text-[10px] font-black uppercase tracking-wider text-[#697586]">Hardware Actions</span>
+            
+            <div className="flex flex-col gap-2">
+              {/* Primary Connect Button */}
               <button
                 type="button"
-                onClick={handleTestPrint}
-                className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                onClick={handleConnectPrinter}
+                disabled={isPairing}
+                className="w-full py-2.5 px-4 glass-btn-coral text-white rounded-full text-xs font-black flex items-center justify-center gap-2 shadow-md active:scale-95 cursor-pointer"
               >
-                <Printer className="w-3.5 h-3.5 text-[#FF5B4A]" />
-                <span>Test Print Receipt</span>
+                <Bluetooth className="w-4 h-4 stroke-[2.5]" />
+                <span>{isPairing ? 'Discovering Printers...' : (printerConfig ? 'Change / Re-Pair Printer' : 'Connect Bluetooth Printer')}</span>
               </button>
 
-              <button
-                type="submit"
-                className="px-6 py-2.5 glass-btn-coral text-white font-black rounded-full text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
-              >
-                <Check className="w-4 h-4 stroke-[3]" />
-                <span>Save Settings</span>
-              </button>
-            </div>
-          </form>
-
-          {/* PWA App Installation Section */}
-          <div className="pt-4 border-t border-[#D8E1EC]/60">
-            <h3 className="text-xs font-black tracking-wider uppercase text-[#697586] mb-2 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-[#FF5B4A]" />
-              <span>Application Installation (PWA)</span>
-            </h3>
-            <div className="flex items-center justify-between p-3.5 glass-inset rounded-2xl">
-              <div>
-                <div className="text-xs font-bold text-[#18202B]">
-                  {isAppInstalled ? 'App Installed (Standalone Mode)' : 'Install EAT & DRINK on this Device'}
-                </div>
-                <div className="text-[10px] text-[#697586]">
-                  {isAppInstalled 
-                    ? 'Running as standalone desktop/mobile restaurant software without browser address bar'
-                    : 'Add shortcut to Desktop / Home Screen with dedicated standalone window'}
-                </div>
-              </div>
-              {!isAppInstalled && onTriggerPWAInstall && (
+              <div className="flex items-center gap-2">
+                {/* Test Print Button */}
                 <button
                   type="button"
-                  onClick={onTriggerPWAInstall}
-                  className="px-4 py-2 glass-btn-coral text-white font-black rounded-full text-xs flex items-center gap-1.5 cursor-pointer shadow-md shrink-0"
+                  onClick={handleTestPrint}
+                  disabled={testPrintLoading}
+                  className="flex-1 py-2 px-3 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                 >
-                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>INSTALL APP</span>
+                  <FileText className="w-3.5 h-3.5 text-[#FF5B4A]" />
+                  <span>{testPrintLoading ? 'Printing...' : 'Test Print'}</span>
                 </button>
-              )}
+
+                {/* Reconnect / Forget Buttons */}
+                {printerConfig && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleReconnect}
+                      disabled={isReconnecting}
+                      className="py-2 px-3 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-xs font-bold flex items-center justify-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                      title="Attempt reconnect"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isReconnecting ? 'animate-spin' : ''}`} />
+                      <span>Reconnect</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForget}
+                      className="p-2 glass-pill text-rose-600 hover:bg-rose-50 rounded-full cursor-pointer shadow-xs active:scale-95"
+                      title="Forget this printer on this device"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Database Backup & Restore */}
-          <div className="pt-4 border-t border-[#D8E1EC]/60">
-            <h3 className="text-xs font-black tracking-wider uppercase text-[#697586] mb-2">
-              Database Backup & Cloud Sync
-            </h3>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleExportDB}
-                className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Download className="w-3.5 h-3.5 text-[#FF5B4A]" />
-                <span>Backup Data (JSON)</span>
-              </button>
-
-              <label className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs">
-                <Upload className="w-3.5 h-3.5 text-sky-600" />
-                <span>Restore Database</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImportDB}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            {dbStatus && <p className="text-[10px] text-emerald-600 mt-1.5 font-bold">{dbStatus}</p>}
-          </div>
         </div>
 
-        {/* Right Form: Monospace Thermal Layout Preview (5 cols) */}
-        <div className="lg:col-span-5 glass-surface p-4 rounded-[32px] flex flex-col shadow-sm">
-          <div className="flex items-center justify-between mb-2 pb-2 border-b border-[#D8E1EC]/60">
-            <h3 className="text-xs font-black tracking-wider uppercase text-[#697586] flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-[#FF5B4A]" />
-              <span>Thermal Receipt Output Preview</span>
-            </h3>
-            <span className="text-[10px] font-bold text-[#FF5B4A] font-mono">{paperWidth}</span>
-          </div>
+      </div>
 
-          <div className="flex-1 bg-white rounded-2xl p-4 overflow-x-auto border border-[#D8E1EC] shadow-inner flex flex-col items-center">
-            <img 
-              src="/logo-thermal.svg" 
-              alt="EAT & DRINK" 
-              className="h-9 w-auto mb-1 object-contain" 
-            />
-            <pre className="receipt-font text-[11px] text-stone-900 leading-tight w-full">
-              {previewText}
-            </pre>
+      {/* ---------------------------------------------------- */}
+      {/* 2. DATABASE BACKUP & RESTORE                         */}
+      {/* ---------------------------------------------------- */}
+      <div className="glass-surface p-5 sm:p-6 rounded-[36px] shadow-sm border border-white/95 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-black text-[#18202B]">Database Backup &amp; Offline Snapshots</h3>
+            <p className="text-xs text-[#697586] font-medium">Export entire bill history, daily earnings, and menu snapshot as JSON</p>
           </div>
+          {dbStatus && (
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-300">
+              {dbStatus}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            type="button"
+            onClick={handleExportDB}
+            className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
+          >
+            <Download className="w-4 h-4 text-[#FF5B4A]" />
+            <span>Export Database JSON</span>
+          </button>
+
+          <label className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs">
+            <Upload className="w-4 h-4 text-[#697586]" />
+            <span>Import Database JSON</span>
+            <input type="file" accept=".json" onChange={handleImportDB} className="hidden" />
+          </label>
         </div>
       </div>
+
     </div>
   );
 }

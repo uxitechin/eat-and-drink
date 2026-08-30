@@ -17,12 +17,14 @@ import {
   Download
 } from 'lucide-react';
 
+import { bluetoothPrinter } from '../services/bluetoothPrinter';
+
 export default function Header({ 
   activeTab, 
   setActiveTab, 
   todaySummary, 
   soundEnabled, 
-  setSoundEnabled,
+  setSoundEnabled, 
   onReplayIntro,
   onTriggerPWAInstall,
   isInstalled
@@ -30,6 +32,12 @@ export default function Header({
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState(bluetoothPrinter.getStatus());
+
+  // Live printer status listener
+  useEffect(() => {
+    return bluetoothPrinter.onStatusChange(setPrinterStatus);
+  }, []);
 
   // Live real-time ticking clock
   useEffect(() => {
@@ -79,6 +87,30 @@ export default function Header({
               </span>
             </div>
           </div>
+
+          {/* Subtle Printer Status Indicator */}
+          {printerStatus !== 'unconfigured' && (
+            <div className="hidden lg:flex items-center gap-1.5 glass-pill px-3 py-1.5 rounded-2xl text-[11px] font-bold">
+              {printerStatus === 'connected' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-emerald-700">Printer Ready</span>
+                </>
+              )}
+              {printerStatus === 'reconnecting' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-amber-700">Reconnecting</span>
+                </>
+              )}
+              {printerStatus === 'offline' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <span className="text-rose-700">Printer Offline</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Mobile Action Controls & Toggle */}

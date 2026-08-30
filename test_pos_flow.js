@@ -106,11 +106,30 @@ async function runTests() {
   }
   console.log('? Idempotent reprint verified! Sales remain strictly ?120 and 1 bill.\n');
 
-  // 6. Clean reset after test
+  // 6. Test ESC/POS Binary Command Builder for 58mm and 80mm
+  console.log('[TEST 6] Testing ESC/POS Binary Command Builder...');
+  const { EscPosBuilder } = await import('./src/services/escpos.js');
+  
+  const builder58 = new EscPosBuilder('58mm');
+  const bytes58 = await builder58.buildReceipt(savedBill, { shopName: 'EAT & DRINK', shopLocation: 'MANGALAGIRI' });
+  console.log(`Generated 58mm ESC/POS Payload: ${bytes58.length} bytes`);
+  if (bytes58.length < 50) throw new Error('58mm ESC/POS payload too small');
+
+  const builder80 = new EscPosBuilder('80mm');
+  const bytes80 = await builder80.buildReceipt(savedBill, { shopName: 'EAT & DRINK', shopLocation: 'MANGALAGIRI' });
+  console.log(`Generated 80mm ESC/POS Payload: ${bytes80.length} bytes`);
+  if (bytes80.length < 50) throw new Error('80mm ESC/POS payload too small');
+
+  const testSlipBytes = await builder80.buildTestSlip({ shopName: 'EAT & DRINK', shopLocation: 'MANGALAGIRI' });
+  console.log(`Generated Test Slip ESC/POS Payload: ${testSlipBytes.length} bytes`);
+  if (testSlipBytes.length < 50) throw new Error('Test slip ESC/POS payload too small');
+  console.log('✓ ESC/POS binary generators verified successfully!\n');
+
+  // 7. Clean reset after test
   await clearAllBillsAndResetSales();
-  console.log('[TEST 6] Clean reset complete: Sales back to ?0, Bills back to 0.');
+  console.log('[TEST 7] Clean reset complete: Sales back to ₹0, Bills back to 0.');
   console.log('\n====================================================');
-  console.log('  ?? ALL SUPABASE & POS VALIDATION TESTS PASSED!');
+  console.log('  🎯 ALL SUPABASE & POS VALIDATION TESTS PASSED!');
   console.log('====================================================');
 }
 
