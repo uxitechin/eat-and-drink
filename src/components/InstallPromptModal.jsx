@@ -8,11 +8,11 @@ export default function InstallPromptModal({ onInstall, onDismiss }) {
         
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="bg-[#0f131a] px-2.5 py-1.5 rounded-2xl flex items-center justify-center border border-white/20 shadow-md shrink-0">
+            <div className="bg-white px-2 py-1 rounded-2xl flex items-center justify-center border border-[#D8E1EC] shadow-md shrink-0">
               <img 
-                src="/logo.png" 
+                src="/eat-and-drink.png" 
                 alt="EAT & DRINK" 
-                className="h-7 w-auto object-contain" 
+                className="h-8 w-auto object-contain" 
               />
             </div>
             <div>

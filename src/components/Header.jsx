@@ -52,14 +52,14 @@ export default function Header({
   return (
     <header className="sticky top-0 z-40 glass-surface px-4 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm shrink-0 select-none">
       
-      {/* Left: Official Brand Logo Capsule */}
+      {/* Left: Official Brand Logo Capsule (White Background) */}
       <div className="flex items-center justify-between w-full md:w-auto">
         <div className="flex items-center gap-3">
-          <div className="bg-[#0f131a] px-3 py-1 rounded-2xl flex items-center justify-center border border-white/15 shadow-sm">
+          <div className="bg-white px-3 py-1 rounded-2xl flex items-center justify-center border border-[#D8E1EC] shadow-sm">
             <img 
-              src="/logo.png" 
+              src="/eat-and-drink.png" 
               alt="EAT & DRINK MANGALAGIRI" 
-              className="h-8 sm:h-9 w-auto object-contain rounded-md"
+              className="h-10 sm:h-12 w-auto object-contain"
             />
           </div>
 

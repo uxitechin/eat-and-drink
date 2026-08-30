@@ -63,35 +63,25 @@ export default function StartupAnimation({ onFinish }) {
           {/* Subtle Top Accent Highlight */}
           <div className="absolute top-0 left-8 right-8 h-1 bg-gradient-to-r from-transparent via-[#FF5B4A]/50 to-transparent rounded-full" />
 
-          {/* Staggered Wordmark Animation */}
-          <div className="flex items-center justify-center gap-3 my-4">
-            <span 
-              className={`text-4xl sm:text-5xl font-black tracking-tight text-[#18202B] transition-all duration-500 transform ${
-                phase >= 2 ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-90'
-              }`}
-            >
-              EAT
-            </span>
-            <span 
-              className={`text-4xl sm:text-5xl font-black text-[#FF5B4A] transition-all duration-500 transform ${
-                phase >= 3 ? 'opacity-100 translate-y-0 scale-110' : 'opacity-0 translate-y-4 scale-75'
-              }`}
-            >
-              &
-            </span>
-            <span 
-              className={`text-4xl sm:text-5xl font-black tracking-tight text-[#18202B] transition-all duration-500 transform ${
-                phase >= 4 ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-90'
-              }`}
-            >
-              DRINK
-            </span>
+          {/* Main Vibrant Official Logo on Crisp White Surface */}
+          <div 
+            className={`transition-all duration-700 transform ${
+              phase >= 2 ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-4'
+            }`}
+          >
+            <div className="bg-white p-3.5 rounded-3xl border border-[#D8E1EC] shadow-md my-3 max-w-[200px] flex items-center justify-center">
+              <img 
+                src="/eat-and-drink.png" 
+                alt="EAT & DRINK" 
+                className="w-full h-auto object-contain"
+              />
+            </div>
           </div>
 
           {/* Logo settling & Chef Motif badge */}
           <div 
             className={`transition-all duration-700 transform ${
-              phase >= 5 ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-3'
+              phase >= 4 ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-3'
             }`}
           >
             <div className="inline-flex items-center gap-2 px-5 py-1.5 rounded-full bg-[#FF5B4A]/10 border border-[#FF5B4A]/25 text-[#FF5B4A] font-black text-xs tracking-[0.25em] uppercase shadow-sm">
