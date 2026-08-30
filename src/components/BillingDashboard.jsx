@@ -14,7 +14,8 @@ import {
   ChevronRight,
   ArrowRight,
   Receipt,
-  Sparkles
+  Sparkles,
+  Download
 } from 'lucide-react';
 import { playBeep, playSuccess, playClear } from '../services/sound';
 
@@ -22,7 +23,9 @@ export default function BillingDashboard({
   categories, 
   items, 
   onConfirmBill, 
-  soundEnabled 
+  soundEnabled,
+  onTriggerPWAInstall,
+  isInstalled
 }) {
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'cat_lassi');
   const [itemSearch, setItemSearch] = useState('');
@@ -495,6 +498,29 @@ export default function BillingDashboard({
       {/* ---------------------------------------------------- */}
       <div className="col-span-12 lg:col-span-8 xl:col-span-8 flex flex-col overflow-hidden glass-surface rounded-[32px] p-4">
         
+        {/* PWA Install Quick Banner (Visible when running in browser) */}
+        {!isInstalled && onTriggerPWAInstall && (
+          <div className="glass-surface p-3 rounded-[24px] mb-3 flex items-center justify-between gap-3 border border-[#FF5B4A]/30 bg-gradient-to-r from-white via-white/95 to-[#FF5B4A]/10 shadow-sm shrink-0 animate-pop-in">
+            <div className="flex items-center gap-2.5">
+              <div className="bg-white p-1 rounded-xl border border-[#D8E1EC] shadow-xs shrink-0 flex items-center justify-center">
+                <img src="/eat-and-drink.png" alt="EAT & DRINK" className="h-7 w-auto object-contain" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-[#18202B] leading-none">Install EAT &amp; DRINK App</h4>
+                <p className="text-[10px] text-[#697586] font-medium mt-0.5">Add to Home Screen &amp; App Drawer for instant launch</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onTriggerPWAInstall}
+              className="px-4 py-2 glass-btn-coral text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer shrink-0"
+            >
+              <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>INSTALL</span>
+            </button>
+          </div>
+        )}
+
         {/* 1. Global Fast Search Bar (Frosted Glass Search Capsule) */}
         <div className="relative mb-3.5 shrink-0">
           <div className="relative flex items-center">

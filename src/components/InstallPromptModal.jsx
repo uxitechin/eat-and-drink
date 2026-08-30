@@ -90,24 +90,24 @@ export function InstallGuideModal({ onClose }) {
 
 export default function InstallPromptModal({ onInstall, onDismiss }) {
   return (
-    <div className="fixed top-16 sm:top-auto sm:bottom-22 left-3 right-3 sm:left-auto sm:right-6 z-50 animate-pop-in max-w-sm sm:w-96 mx-auto">
-      <div className="glass-surface p-4 rounded-[32px] shadow-2xl border border-white/95 flex flex-col gap-3 backdrop-blur-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-pop-in select-none">
+      <div className="glass-surface p-6 rounded-[36px] shadow-2xl border border-white/95 flex flex-col gap-4 max-w-sm w-full backdrop-blur-2xl">
         
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="bg-white p-2 rounded-2xl flex items-center justify-center border border-[#D8E1EC] shadow-sm shrink-0">
+            <div className="bg-white p-2.5 rounded-2xl flex items-center justify-center border border-[#D8E1EC] shadow-sm shrink-0">
               <img 
                 src="/eat-and-drink.png" 
                 alt="EAT & DRINK" 
-                className="h-9 w-auto object-contain" 
+                className="h-11 w-auto object-contain" 
               />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-black text-[#18202B]">EAT &amp; DRINK</h3>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#FF5B4A]/15 text-[#FF5B4A]">APP</span>
+                <h3 className="text-base font-black text-[#18202B]">EAT &amp; DRINK</h3>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-[#FF5B4A]/15 text-[#FF5B4A]">APP</span>
               </div>
-              <p className="text-[11px] text-[#697586] font-medium leading-tight mt-0.5">
+              <p className="text-xs text-[#697586] font-medium leading-tight mt-1">
                 Install as a full application on your home screen &amp; app drawer.
               </p>
             </div>
@@ -115,26 +115,26 @@ export default function InstallPromptModal({ onInstall, onDismiss }) {
 
           <button
             onClick={onDismiss}
-            className="text-[#98A2B3] hover:text-[#18202B] p-1 rounded-full cursor-pointer shrink-0 transition-colors"
+            className="text-[#98A2B3] hover:text-[#18202B] p-1.5 rounded-full cursor-pointer shrink-0 transition-colors"
             title="Dismiss"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#D8E1EC]/50">
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#D8E1EC]/60">
           <button
             onClick={onDismiss}
-            className="px-4 py-2 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-xs font-bold transition-all cursor-pointer shadow-xs"
+            className="px-5 py-2.5 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
-            Later
+            Maybe Later
           </button>
 
           <button
             onClick={onInstall}
-            className="px-5 py-2 glass-btn-coral text-white rounded-full text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+            className="px-6 py-2.5 glass-btn-coral text-white rounded-full text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95"
           >
-            <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+            <Download className="w-4 h-4 stroke-[2.5]" />
             <span>INSTALL APP</span>
           </button>
         </div>

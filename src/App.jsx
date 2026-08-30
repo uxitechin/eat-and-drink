@@ -180,6 +180,8 @@ export default function App() {
                 items={items}
                 onConfirmBill={handleConfirmBill}
                 soundEnabled={soundEnabled}
+                onTriggerPWAInstall={triggerInstall}
+                isInstalled={isInstalled}
               />
             )}
 
