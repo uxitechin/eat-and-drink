@@ -13,7 +13,14 @@ import {
   PieChart,
   RotateCcw
 } from 'lucide-react';
-import { getAllBills, getAllDailySummaries, getTodayDateKey, formatDateDisplay, clearAllBillsAndResetSales } from '../services/storage';
+import { 
+  getAllBills, 
+  getAllDailySummaries, 
+  getTodayDateKey, 
+  formatDateDisplay, 
+  clearAllBillsAndResetSales,
+  deleteDateBills 
+} from '../services/storage';
 
 export default function DailyEarnings({ todaySummary }) {
   const [selectedDateKey, setSelectedDateKey] = useState(getTodayDateKey());
@@ -106,6 +113,14 @@ export default function DailyEarnings({ todaySummary }) {
     }
   };
 
+  const handleDeleteCurrentDate = async () => {
+    if (window.confirm(`Are you sure you want to delete all recorded data for ${formatDateDisplay(selectedDateKey)}?`)) {
+      await deleteDateBills(selectedDateKey);
+      setSelectedDateKey(getTodayDateKey());
+      window.location.reload();
+    }
+  };
+
   return (
     <div className="flex-1 p-4 overflow-y-auto space-y-4 max-w-7xl mx-auto w-full select-none">
       
@@ -143,6 +158,17 @@ export default function DailyEarnings({ todaySummary }) {
             <Download className="w-3.5 h-3.5 text-[#FF5B4A]" />
             <span>Export CSV</span>
           </button>
+
+          {selectedDateKey !== getTodayDateKey() && (
+            <button
+              onClick={handleDeleteCurrentDate}
+              className="px-4 py-2 glass-pill hover:bg-rose-50 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title={`Delete all bills and summary for ${formatDateDisplay(selectedDateKey)}`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Delete {formatDateDisplay(selectedDateKey)} Data</span>
+            </button>
+          )}
 
           <button
             onClick={handleResetAllSales}

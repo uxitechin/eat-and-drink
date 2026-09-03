@@ -291,12 +291,69 @@ export async function fetchRemoteBills() {
         createdAt: b.created_at,
       }));
       saveBills(mapped);
+
+      // Rebuild & sync daily summaries directly from Supabase source of truth
+      const syncedSummaries = {};
+      mapped.forEach(b => {
+        const dKey = b.dateKey;
+        if (!syncedSummaries[dKey]) {
+          syncedSummaries[dKey] = {
+            dateKey: dKey,
+            dateDisplay: formatDateDisplay(dKey),
+            totalSales: 0,
+            cashSales: 0,
+            upiSales: 0,
+            billCount: 0,
+            itemCount: 0,
+          };
+        }
+        syncedSummaries[dKey].totalSales += b.total;
+        if (b.paymentMethod === 'CASH') {
+          syncedSummaries[dKey].cashSales += b.total;
+        } else {
+          syncedSummaries[dKey].upiSales += b.total;
+        }
+        syncedSummaries[dKey].billCount += 1;
+        syncedSummaries[dKey].itemCount += (b.items || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
+      });
+      saveDailySummaries(syncedSummaries);
+
       return mapped;
     }
   } catch (err) {
     console.warn('[Supabase] Bills fetch error, using local fallback:', err.message);
   }
   return getAllBills();
+}
+
+// Delete all bills and summary for a specific date (e.g. 2026-08-30)
+export async function deleteDateBills(dateKey) {
+  if (isSupabaseConfigured) {
+    try {
+      const { data: billsToDelete } = await supabase
+        .from('bills')
+        .select('id')
+        .eq('bill_date', dateKey);
+
+      if (billsToDelete && billsToDelete.length > 0) {
+        const billIds = billsToDelete.map(b => b.id);
+        await supabase.from('bill_items').delete().in('bill_id', billIds);
+        await supabase.from('bills').delete().eq('bill_date', dateKey);
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error deleting date bills:', err.message);
+    }
+  }
+
+  // Remove from local cache
+  const allBills = getAllBills().filter(b => b.dateKey !== dateKey);
+  saveBills(allBills);
+
+  const summaries = getAllDailySummaries();
+  delete summaries[dateKey];
+  saveDailySummaries(summaries);
+
+  return true;
 }
 
 // Fetch daily sales summary directly from Supabase
