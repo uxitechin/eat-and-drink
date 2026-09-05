@@ -12,9 +12,6 @@ import {
   ShoppingBag,
   ChevronLeft,
   ChevronRight,
-  ArrowRight,
-  Receipt,
-  Sparkles,
   Download
 } from 'lucide-react';
 import { playBeep, playSuccess, playClear } from '../services/sound';

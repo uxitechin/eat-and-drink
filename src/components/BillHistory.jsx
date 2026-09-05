@@ -4,13 +4,12 @@ import {
   History, 
   Printer, 
   Eye, 
-  Calendar, 
   CreditCard, 
   Banknote, 
   Download, 
   FileText
 } from 'lucide-react';
-import { getAllBills, formatDateDisplay } from '../services/storage';
+import { getAllBills } from '../services/storage';
 
 export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
   const [search, setSearch] = useState('');

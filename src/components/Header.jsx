@@ -4,7 +4,6 @@ import {
   TrendingUp, 
   History, 
   UtensilsCrossed, 
-  Printer, 
   Maximize2, 
   Minimize2, 
   Volume2, 
@@ -12,8 +11,6 @@ import {
   RotateCcw, 
   Menu, 
   X,
-  Banknote,
-  CreditCard,
   Download
 } from 'lucide-react';
 

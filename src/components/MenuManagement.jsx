@@ -6,13 +6,10 @@ import {
   Trash2, 
   RotateCcw, 
   Search, 
-  Check, 
   X, 
   AlertTriangle,
   FolderPlus,
-  Power,
-  Printer,
-  Sliders
+  Power
 } from 'lucide-react';
 import { saveCategories, saveItems, resetMenuToDefault } from '../services/storage';
 import PrinterSettings from './PrinterSettings';

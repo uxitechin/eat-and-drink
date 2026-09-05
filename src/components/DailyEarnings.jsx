@@ -3,13 +3,8 @@ import {
   TrendingUp, 
   Banknote, 
   CreditCard, 
-  Receipt, 
-  ShoppingBag, 
-  Calendar, 
   Download, 
-  Clock, 
   Award,
-  Sparkles,
   PieChart,
   RotateCcw
 } from 'lucide-react';

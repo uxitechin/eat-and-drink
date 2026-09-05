@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Printer, 
-  Check, 
   Bluetooth, 
-  BluetoothConnected, 
-  BluetoothOff, 
   RefreshCw, 
   Trash2, 
   AlertCircle,
   FileText,
   Download,
   Upload,
-  CheckCircle2,
-  Sliders
+  CheckCircle2
 } from 'lucide-react';
 import { bluetoothPrinter, printTestReceipt } from '../services/printer';
 import { exportFullDatabase, importFullDatabase } from '../services/storage';

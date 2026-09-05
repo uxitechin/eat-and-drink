@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, 
   TrendingUp, 
   History, 
-  UtensilsCrossed, 
-  Printer 
+  UtensilsCrossed 
 } from 'lucide-react';
 import Header from './components/Header';
 import BillingDashboard from './components/BillingDashboard';
 import DailyEarnings from './components/DailyEarnings';
 import BillHistory from './components/BillHistory';
 import MenuManagement from './components/MenuManagement';
-import PrinterSettings from './components/PrinterSettings';
 import BillPreviewModal from './components/BillPreviewModal';
 import StartupAnimation from './components/StartupAnimation';
 import InstallPromptModal, { InstallGuideModal } from './components/InstallPromptModal';
@@ -30,15 +28,13 @@ import {
   fetchRemoteDailySummary
 } from './services/storage';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
-import { printReceipt } from './services/printer';
 
 export default function App() {
   const [showStartup, setShowStartup] = useState(true);
-  const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu', 'printer'
+  const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu'
   
   // PWA Installation Hook
   const { 
-    isInstallable, 
     isInstalled, 
     showPrompt, 
     showGuideModal, 

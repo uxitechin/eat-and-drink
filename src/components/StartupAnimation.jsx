@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
 
 export default function StartupAnimation({ onFinish }) {
   const [phase, setPhase] = useState(0);

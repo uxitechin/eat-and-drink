@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, X, Smartphone, ArrowRight, Share2, PlusSquare, MoreVertical } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 
 export function InstallGuideModal({ onClose }) {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
