@@ -11,10 +11,13 @@ import {
   RotateCcw, 
   Menu, 
   X,
-  Download
+  Download,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 import { bluetoothPrinter } from '../services/bluetoothPrinter';
+import { APP_VERSION } from '../services/logger';
 
 export default function Header({ 
   activeTab, 
@@ -24,12 +27,13 @@ export default function Header({
   setSoundEnabled, 
   onReplayIntro,
   onTriggerPWAInstall,
-  isInstalled
+  isInstalled,
+  isOnline = true
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [printerStatus, setPrinterStatus] = useState(bluetoothPrinter.getStatus());
+  const [printerStatus, setPrinterStatus] = useState(() => bluetoothPrinter.getStatus());
 
   // Live printer status listener
   useEffect(() => {
@@ -62,19 +66,43 @@ export default function Header({
   return (
     <header className="sticky top-0 z-40 glass-surface px-4 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm shrink-0 select-none">
       
-      {/* Left: Official Brand Logo Capsule (White Background) */}
+      {/* Left: Official Brand Logo Capsule & System Status */}
       <div className="flex items-center justify-between w-full md:w-auto">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="bg-white px-3 py-1 rounded-2xl flex items-center justify-center border border-[#D8E1EC] shadow-sm">
             <img 
               src="/eat-and-drink.png" 
               alt="EAT & DRINK MANGALAGIRI" 
-              className="h-10 sm:h-12 w-auto object-contain"
+              className="h-10 sm:h-12 w-auto object-contain" 
             />
           </div>
 
+          {/* Network Status Badge */}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border transition-colors ${
+            isOnline
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse'
+          }`}>
+            {isOnline ? (
+              <>
+                <Wifi className="w-3 h-3 text-emerald-600 stroke-[2.5]" />
+                <span className="hidden sm:inline">ONLINE</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3 text-rose-600 stroke-[2.5]" />
+                <span>OFFLINE</span>
+              </>
+            )}
+          </div>
+
+          {/* Diagnostics App Version Badge */}
+          <span className="text-[10px] font-mono font-bold text-[#697586] hidden lg:inline bg-white/70 px-2 py-0.5 rounded-full border border-[#D8E1EC]">
+            v{APP_VERSION}
+          </span>
+
           {/* Live Date & Time Clock Widget */}
-          <div className="hidden xl:flex items-center gap-2 glass-pill px-3.5 py-1.5 rounded-2xl">
+          <div className="hidden xl:flex items-center gap-2 glass-pill px-3 py-1.5 rounded-2xl">
             <div className="flex flex-col">
               <span className="text-[9px] font-bold uppercase text-[#697586] tracking-wider">
                 {currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}
@@ -249,5 +277,3 @@ export default function Header({
     </header>
   );
 }
-
-

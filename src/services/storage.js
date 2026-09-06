@@ -1,5 +1,6 @@
 import { INITIAL_CATEGORIES, INITIAL_ITEMS } from '../data/initialMenu.js';
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
+import { logger } from './logger.js';
 
 const KEYS = {
   CATEGORIES: 'eat_drink_categories',
@@ -10,23 +11,43 @@ const KEYS = {
   LAST_BILL_SEQ: 'eat_drink_last_bill_seq',
 };
 
-// --- MENU DATA (SUPABASE PRIMARY + LOCAL FALLBACK) ---
-
-export function getCategories() {
-  const data = localStorage.getItem(KEYS.CATEGORIES);
-  if (!data) {
-    saveCategories(INITIAL_CATEGORIES);
-    return INITIAL_CATEGORIES;
-  }
+// Safe LocalStorage helpers that never throw and never clear other data
+function safeGetJSON(key, fallback) {
+  if (typeof localStorage === 'undefined') return fallback;
   try {
-    return JSON.parse(data);
-  } catch (e) {
-    return INITIAL_CATEGORIES;
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed !== null && parsed !== undefined ? parsed : fallback;
+  } catch (err) {
+    logger.warn('Storage', `Corrupted localStorage value for key: ${key}. Using fallback.`, err);
+    return fallback;
   }
 }
 
+function safeSetJSON(key, value) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    logger.warn('Storage', `Failed to set localStorage for key: ${key}`, err);
+  }
+}
+
+// --- MENU DATA (SUPABASE PRIMARY + LOCAL FALLBACK) ---
+
+export function getCategories() {
+  const cached = safeGetJSON(KEYS.CATEGORIES, null);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
+  }
+  return INITIAL_CATEGORIES;
+}
+
 export function saveCategories(categories) {
-  localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(categories));
+  if (Array.isArray(categories) && categories.length > 0) {
+    safeSetJSON(KEYS.CATEGORIES, categories);
+  }
 }
 
 export async function fetchRemoteCategories() {
@@ -38,7 +59,7 @@ export async function fetchRemoteCategories() {
       .order('display_order', { ascending: true });
     
     if (error) throw error;
-    if (data && data.length > 0) {
+    if (data && Array.isArray(data) && data.length > 0) {
       const mapped = data.map(c => ({
         id: c.id,
         name: c.name,
@@ -49,26 +70,23 @@ export async function fetchRemoteCategories() {
       return mapped;
     }
   } catch (err) {
-    console.warn('[Supabase] Categories fetch error, using local fallback:', err.message);
+    logger.warn('Storage', 'Categories fetch failed, keeping previous state', err);
   }
   return getCategories();
 }
 
 export function getItems() {
-  const data = localStorage.getItem(KEYS.ITEMS);
-  if (!data) {
-    saveItems(INITIAL_ITEMS);
-    return INITIAL_ITEMS;
+  const cached = safeGetJSON(KEYS.ITEMS, null);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
   }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return INITIAL_ITEMS;
-  }
+  return INITIAL_ITEMS;
 }
 
 export function saveItems(items) {
-  localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
+  if (Array.isArray(items) && items.length > 0) {
+    safeSetJSON(KEYS.ITEMS, items);
+  }
 }
 
 export async function fetchRemoteItems() {
@@ -80,7 +98,7 @@ export async function fetchRemoteItems() {
       .order('name', { ascending: true });
     
     if (error) throw error;
-    if (data && data.length > 0) {
+    if (data && Array.isArray(data) && data.length > 0) {
       const mapped = data.map(it => ({
         id: it.id,
         categoryId: it.category_id,
@@ -92,7 +110,7 @@ export async function fetchRemoteItems() {
       return mapped;
     }
   } catch (err) {
-    console.warn('[Supabase] Items fetch error, using local fallback:', err.message);
+    logger.warn('Storage', 'Items fetch failed, keeping previous state', err);
   }
   return getItems();
 }
@@ -113,7 +131,9 @@ export function getTodayDateKey(d = new Date()) {
 
 export function formatDateDisplay(dateStr) {
   if (!dateStr) return '';
-  const [y, m, d] = dateStr.split('-');
+  const parts = String(dateStr).split('-');
+  if (parts.length !== 3) return dateStr;
+  const [y, m, d] = parts;
   return `${d}-${m}-${y}`;
 }
 
@@ -145,62 +165,75 @@ export async function getNextBillNumber() {
       }
       return '#000001';
     } catch (e) {
-      console.warn('[Supabase] Error getting next bill number from Supabase:', e);
+      logger.warn('Storage', 'Error querying next bill number from Supabase', e);
     }
   }
 
   // Fallback to local sequence
-  let seq = parseInt(localStorage.getItem(KEYS.LAST_BILL_SEQ) || '0', 10);
+  let seq = parseInt(safeGetJSON(KEYS.LAST_BILL_SEQ, '0'), 10);
+  if (isNaN(seq)) seq = 0;
   seq += 1;
-  localStorage.setItem(KEYS.LAST_BILL_SEQ, String(seq));
+  safeSetJSON(KEYS.LAST_BILL_SEQ, String(seq));
   return `#${String(seq).padStart(6, '0')}`;
 }
 
 export function getAllBills() {
-  const data = localStorage.getItem(KEYS.BILLS);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
+  return safeGetJSON(KEYS.BILLS, []);
 }
 
 export function saveBills(bills) {
-  localStorage.setItem(KEYS.BILLS, JSON.stringify(bills));
+  if (Array.isArray(bills)) {
+    safeSetJSON(KEYS.BILLS, bills);
+  }
 }
 
-// --- SAVE CONFIRMED BILL (SUPABASE TRANSACTION + ATOMIC LINE ITEMS) ---
+// In-flight bill creation idempotency map (client-side lock)
+const pendingTransactions = new Set();
+
+// --- SAVE CONFIRMED BILL (IDEMPOTENT + TRANSACTION SAFE) ---
 export async function saveConfirmedBill(billData) {
-  const now = new Date();
-  const dateKey = getTodayDateKey(now);
-  const dateDisplay = formatDateDisplay(dateKey);
-  const timeDisplay = formatTimeDisplay(now);
+  if (!billData || !billData.items || billData.items.length === 0) {
+    throw new Error('Cannot save an empty bill.');
+  }
 
-  const billNumber = billData.billNumber || await getNextBillNumber();
+  const transactionId = billData.transactionId || `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
-  const finalizedBill = {
-    id: 'bill_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-    billNumber: billNumber,
-    items: billData.items || [],
-    subtotal: Number(billData.subtotal) || 0,
-    discount: Number(billData.discount) || 0,
-    total: Number(billData.total) || 0,
-    paymentMethod: billData.paymentMethod || 'CASH',
-    cashGiven: billData.paymentMethod === 'CASH' && billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
-    change: billData.paymentMethod === 'CASH' && billData.change !== undefined ? Number(billData.change) : undefined,
-    customerName: billData.customerName || '',
-    customerPhone: billData.customerPhone || '',
-    dateKey: dateKey,
-    date: dateDisplay,
-    time: timeDisplay,
-    timestamp: now.getTime(),
-    createdAt: now.toISOString(),
-  };
+  if (pendingTransactions.has(transactionId)) {
+    throw new Error('A transaction with this ID is already in progress.');
+  }
 
-  // 1. Insert into Supabase PostgreSQL (Source of Truth)
-  if (isSupabaseConfigured) {
-    try {
+  pendingTransactions.add(transactionId);
+
+  try {
+    const now = new Date();
+    const dateKey = getTodayDateKey(now);
+    const dateDisplay = formatDateDisplay(dateKey);
+    const timeDisplay = formatTimeDisplay(now);
+
+    const billNumber = billData.billNumber || await getNextBillNumber();
+    
+    const finalizedBill = {
+      id: 'bill_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+      transactionId: transactionId,
+      billNumber: billNumber,
+      items: billData.items || [],
+      subtotal: Number(billData.subtotal) || 0,
+      discount: Number(billData.discount) || 0,
+      total: Number(billData.total) || 0,
+      paymentMethod: billData.paymentMethod || 'CASH',
+      cashGiven: billData.paymentMethod === 'CASH' && billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
+      change: billData.paymentMethod === 'CASH' && billData.change !== undefined ? Number(billData.change) : undefined,
+      customerName: billData.customerName || '',
+      customerPhone: billData.customerPhone || '',
+      dateKey: dateKey,
+      date: dateDisplay,
+      time: timeDisplay,
+      timestamp: now.getTime(),
+      createdAt: now.toISOString(),
+    };
+
+    // 1. Insert into Supabase PostgreSQL (Source of Truth)
+    if (isSupabaseConfigured) {
       const { data: billRecord, error: billError } = await supabase
         .from('bills')
         .insert({
@@ -218,7 +251,10 @@ export async function saveConfirmedBill(billData) {
         .select()
         .single();
 
-      if (billError) throw billError;
+      if (billError) {
+        logger.error('Storage', 'Failed to insert bill into Supabase', billError);
+        throw new Error('Unable to save bill to database: ' + (billError.message || 'Database error'));
+      }
 
       finalizedBill.id = billRecord.id;
 
@@ -237,23 +273,31 @@ export async function saveConfirmedBill(billData) {
         });
 
         const { error: itemsError } = await supabase.from('bill_items').insert(lineItems);
-        if (itemsError) throw itemsError;
+        if (itemsError) {
+          logger.error('Storage', 'Failed to insert bill items into Supabase', itemsError);
+          // Attempt rollback of the orphan bill header
+          try {
+            await supabase.from('bills').delete().eq('id', billRecord.id);
+          } catch (rollbackErr) {
+            logger.error('Storage', 'Rollback failed for orphan bill', rollbackErr);
+          }
+          throw new Error('Failed to save complete bill items.');
+        }
       }
-    } catch (err) {
-      console.error('[Supabase] Failed to save bill:', err);
-      throw new Error('Unable to save bill. Please try again.');
     }
+
+    // 3. Update local cache ONLY AFTER successful database response
+    const allBills = getAllBills();
+    allBills.unshift(finalizedBill);
+    saveBills(allBills);
+
+    // 4. Update local Daily Summary
+    updateDailySummary(dateKey, finalizedBill);
+
+    return finalizedBill;
+  } finally {
+    pendingTransactions.delete(transactionId);
   }
-
-  // 3. Update local cache for instant fast UI responsiveness
-  const allBills = getAllBills();
-  allBills.unshift(finalizedBill);
-  saveBills(allBills);
-
-  // 4. Update local Daily Summary
-  updateDailySummary(dateKey, finalizedBill);
-
-  return finalizedBill;
 }
 
 // Fetch all bills from Supabase with line items
@@ -266,7 +310,7 @@ export async function fetchRemoteBills() {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    if (data) {
+    if (data && Array.isArray(data)) {
       const mapped = data.map(b => ({
         id: b.id,
         billNumber: b.bill_number,
@@ -321,13 +365,14 @@ export async function fetchRemoteBills() {
       return mapped;
     }
   } catch (err) {
-    console.warn('[Supabase] Bills fetch error, using local fallback:', err.message);
+    logger.warn('Storage', 'Bills fetch failed, preserving existing state', err);
   }
   return getAllBills();
 }
 
-// Delete all bills and summary for a specific date (e.g. 2026-08-30)
+// Delete all bills and summary for a specific date (Explicit admin action only)
 export async function deleteDateBills(dateKey) {
+  if (!dateKey) return false;
   if (isSupabaseConfigured) {
     try {
       const { data: billsToDelete } = await supabase
@@ -341,7 +386,7 @@ export async function deleteDateBills(dateKey) {
         await supabase.from('bills').delete().eq('bill_date', dateKey);
       }
     } catch (err) {
-      console.warn('[Supabase] Error deleting date bills:', err.message);
+      logger.warn('Storage', 'Error deleting date bills from remote', err);
     }
   }
 
@@ -403,24 +448,20 @@ export async function fetchRemoteDailySummary(dateKey = getTodayDateKey()) {
 
     return summary;
   } catch (err) {
-    console.warn('[Supabase] Daily summary fetch error, using local calculation:', err.message);
+    logger.warn('Storage', 'Daily summary fetch failed, using local calculation', err);
     return getTodaySummary();
   }
 }
 
 // --- DAILY SUMMARIES LOCAL CACHE HELPERS ---
 export function getAllDailySummaries() {
-  const data = localStorage.getItem(KEYS.DAILY_SUMMARIES);
-  if (!data) return {};
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return {};
-  }
+  return safeGetJSON(KEYS.DAILY_SUMMARIES, {});
 }
 
 export function saveDailySummaries(summaries) {
-  localStorage.setItem(KEYS.DAILY_SUMMARIES, JSON.stringify(summaries));
+  if (summaries && typeof summaries === 'object') {
+    safeSetJSON(KEYS.DAILY_SUMMARIES, summaries);
+  }
 }
 
 function updateDailySummary(dateKey, bill) {
@@ -443,7 +484,7 @@ function updateDailySummary(dateKey, bill) {
   }
   current.billCount += 1;
   
-  const itemsInBill = bill.items.reduce((sum, it) => sum + (it.quantity || 1), 0);
+  const itemsInBill = (bill.items || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
   current.itemCount += itemsInBill;
 
   summaries[dateKey] = current;
@@ -471,7 +512,6 @@ export function getTodaySummary() {
 
 // --- PRINTER SETTINGS ---
 export function getPrinterSettings() {
-  const data = localStorage.getItem(KEYS.PRINTER_SETTINGS);
   const defaultSettings = {
     selectedPrinter: 'Default System Printer',
     paperWidth: '80mm',
@@ -481,24 +521,29 @@ export function getPrinterSettings() {
     autoPrint: false,
     soundEnabled: true,
   };
-  if (!data) return defaultSettings;
-  try {
-    return { ...defaultSettings, ...JSON.parse(data) };
-  } catch (e) {
-    return defaultSettings;
-  }
+  const cached = safeGetJSON(KEYS.PRINTER_SETTINGS, null);
+  if (!cached) return defaultSettings;
+  return { ...defaultSettings, ...cached };
 }
 
 export function savePrinterSettings(settings) {
-  localStorage.setItem(KEYS.PRINTER_SETTINGS, JSON.stringify(settings));
+  if (settings && typeof settings === 'object') {
+    safeSetJSON(KEYS.PRINTER_SETTINGS, settings);
+  }
 }
 
-// --- RESET ALL BILLS & RESTART FROM ZERO ---
-export async function clearAllBillsAndResetSales() {
+// --- RESET ALL BILLS (Admin Deliberate Action with Safety Guard) ---
+export async function clearAllBillsAndResetSales(adminKey) {
+  // Safety guard against accidental programmatic invocation
+  if (adminKey !== 'CONFIRM_ADMIN_RESET_2026') {
+    logger.warn('Storage', 'Attempted unauthorized database reset blocked.');
+    return false;
+  }
+
   // 1. Clear local storage records
-  localStorage.removeItem(KEYS.BILLS);
-  localStorage.removeItem(KEYS.DAILY_SUMMARIES);
-  localStorage.setItem(KEYS.LAST_BILL_SEQ, '0');
+  safeSetJSON(KEYS.BILLS, []);
+  safeSetJSON(KEYS.DAILY_SUMMARIES, {});
+  safeSetJSON(KEYS.LAST_BILL_SEQ, '0');
 
   // 2. Clear Supabase tables if configured
   if (isSupabaseConfigured) {
@@ -506,7 +551,7 @@ export async function clearAllBillsAndResetSales() {
       await supabase.from('bill_items').delete().neq('item_name', '__non_existent__');
       await supabase.from('bills').delete().neq('bill_number', '__non_existent__');
     } catch (err) {
-      console.warn('[Supabase] Error truncating remote bills:', err.message);
+      logger.warn('Storage', 'Error truncating remote bills', err);
     }
   }
 
@@ -516,14 +561,14 @@ export async function clearAllBillsAndResetSales() {
 // --- DATABASE BACKUP / RESTORE ---
 export function exportFullDatabase() {
   return {
-    version: '2.0 (Supabase Powered)',
+    version: '2.0 (Supabase Protected)',
     exportedAt: new Date().toISOString(),
     categories: getCategories(),
     items: getItems(),
     bills: getAllBills(),
     dailySummaries: getAllDailySummaries(),
     printerSettings: getPrinterSettings(),
-    lastBillSeq: localStorage.getItem(KEYS.LAST_BILL_SEQ) || '0',
+    lastBillSeq: safeGetJSON(KEYS.LAST_BILL_SEQ, '0'),
   };
 }
 
@@ -534,6 +579,6 @@ export function importFullDatabase(db) {
   if (db.bills) saveBills(db.bills);
   if (db.dailySummaries) saveDailySummaries(db.dailySummaries);
   if (db.printerSettings) savePrinterSettings(db.printerSettings);
-  if (db.lastBillSeq) localStorage.setItem(KEYS.LAST_BILL_SEQ, String(db.lastBillSeq));
+  if (db.lastBillSeq) safeSetJSON(KEYS.LAST_BILL_SEQ, String(db.lastBillSeq));
   return true;
 }

@@ -103,7 +103,7 @@ export default function DailyEarnings({ todaySummary }) {
 
   const handleResetAllSales = async () => {
     if (window.confirm('Are you sure you want to reset all bills and start sales from ₹0?')) {
-      await clearAllBillsAndResetSales();
+      await clearAllBillsAndResetSales('CONFIRM_ADMIN_RESET_2026');
       window.location.reload();
     }
   };

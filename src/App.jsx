@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   ShoppingCart, 
   TrendingUp, 
@@ -13,7 +13,9 @@ import MenuManagement from './components/MenuManagement';
 import BillPreviewModal from './components/BillPreviewModal';
 import StartupAnimation from './components/StartupAnimation';
 import InstallPromptModal, { InstallGuideModal } from './components/InstallPromptModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { logger, APP_VERSION } from './services/logger';
 
 import { 
   getCategories, 
@@ -32,7 +34,8 @@ import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 export default function App() {
   const [showStartup, setShowStartup] = useState(true);
   const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu'
-  
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
   // PWA Installation Hook
   const { 
     isInstalled, 
@@ -43,68 +46,117 @@ export default function App() {
     closeGuideModal 
   } = usePWAInstall();
 
-  // App data state
-  const [categories, setCategories] = useState([]);
-  const [items, setItems] = useState([]);
-  const [todaySummary, setTodaySummary] = useState(null);
-  const [printerSettings, setPrinterSettings] = useState(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  // App data state (Instantly initialized with safe cached/default values)
+  const [categories, setCategories] = useState(() => getCategories());
+  const [items, setItems] = useState(() => getItems());
+  const [todaySummary, setTodaySummary] = useState(() => getTodaySummary());
+  const [printerSettings, setPrinterSettings] = useState(() => getPrinterSettings());
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    const s = getPrinterSettings();
+    return s?.soundEnabled ?? true;
+  });
 
   // Active bill preview modal state
   const [previewBill, setPreviewBill] = useState(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   // Bottom Navigation tabs definition (4 Core Modules)
-  const bottomTabs = [
+  const bottomTabs = useMemo(() => [
     { id: 'billing', label: 'POS Billing', shortLabel: 'POS', hotkey: 'F1', icon: ShoppingCart },
     { id: 'daily', label: 'Daily Earnings', shortLabel: 'Earnings', hotkey: 'F2', icon: TrendingUp },
     { id: 'history', label: 'Bill History', shortLabel: 'History', hotkey: 'F3', icon: History },
     { id: 'menu', label: 'Menu Admin', shortLabel: 'Menu', hotkey: 'F4', icon: UtensilsCrossed },
-  ];
+  ], []);
 
-  // Load initial data (Instant local cache + Async Supabase sync)
+  // Online / Offline network event listeners
   useEffect(() => {
-    // 1. Instant local load
-    setCategories(getCategories());
-    setItems(getItems());
-    setTodaySummary(getTodaySummary());
-    const loadedSettings = getPrinterSettings();
-    setPrinterSettings(loadedSettings);
-    setSoundEnabled(loadedSettings?.soundEnabled ?? true);
+    const handleOnline = () => {
+      logger.info('Network', 'Application came online');
+      setIsOnline(true);
+      // Sync fresh data from remote when returning online
+      if (isSupabaseConfigured) {
+        fetchRemoteCategories().then(cats => cats && cats.length > 0 && setCategories(cats));
+        fetchRemoteItems().then(itms => itms && itms.length > 0 && setItems(itms));
+        fetchRemoteBills().then(() => {
+          fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
+        });
+      }
+    };
+    const handleOffline = () => {
+      logger.warn('Network', 'Application is offline. Using local cached data.');
+      setIsOnline(false);
+    };
 
-    // 2. Async Supabase Sync
-    if (isSupabaseConfigured) {
-      fetchRemoteCategories().then(cats => cats && setCategories(cats));
-      fetchRemoteItems().then(itms => itms && setItems(itms));
-      fetchRemoteBills().then(() => {
-        fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
-      });
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
-      // 3. Realtime subscription on bills
+  // Safe Application Startup: Purely READ ONLY synchronization
+  useEffect(() => {
+    let isMounted = true;
+    logger.info('App', `Initializing EAT & DRINK POS v${APP_VERSION}`);
+
+    if (isSupabaseConfigured && navigator.onLine) {
+      // 1. Fetch remote categories (never overwrites if null/empty)
+      fetchRemoteCategories()
+        .then(cats => {
+          if (isMounted && cats && cats.length > 0) setCategories(cats);
+        })
+        .catch(err => logger.warn('App', 'Remote categories load failed', err));
+
+      // 2. Fetch remote menu items (never overwrites if null/empty)
+      fetchRemoteItems()
+        .then(itms => {
+          if (isMounted && itms && itms.length > 0) setItems(itms);
+        })
+        .catch(err => logger.warn('App', 'Remote items load failed', err));
+
+      // 3. Fetch remote bills and sync summary
+      fetchRemoteBills()
+        .then(() => {
+          return fetchRemoteDailySummary();
+        })
+        .then(summary => {
+          if (isMounted && summary) setTodaySummary(summary);
+        })
+        .catch(err => logger.warn('App', 'Remote summary sync failed', err));
+
+      // 4. Realtime subscription for multi-terminal sync
       const channel = supabase
         .channel('public:bills')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bills' }, () => {
-          fetchRemoteBills().then(() => {
-            fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
-          });
+          if (isMounted) {
+            fetchRemoteBills().then(() => {
+              fetchRemoteDailySummary().then(s => s && isMounted && setTodaySummary(s));
+            });
+          }
         })
         .subscribe();
 
       return () => {
+        isMounted = false;
         supabase.removeChannel(channel);
       };
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Sync sound settings changes
-  const handleSoundChange = (enabled) => {
+  const handleSoundChange = useCallback((enabled) => {
     setSoundEnabled(enabled);
-    if (printerSettings) {
-      const updated = { ...printerSettings, soundEnabled: enabled };
-      setPrinterSettings(updated);
+    setPrinterSettings(prev => {
+      const updated = { ...(prev || {}), soundEnabled: enabled };
       savePrinterSettings(updated);
-    }
-  };
+      return updated;
+    });
+  }, []);
 
   // Keyboard navigation shortcuts (F1-F4)
   useEffect(() => {
@@ -128,14 +180,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle bill confirmation from cashier (Supabase Primary)
+  // Handle bill confirmation from cashier (Idempotent & Transaction Safe)
   const handleConfirmBill = useCallback(async (billPayload) => {
     // 1. Save bill in Supabase & local cache
     const savedBill = await saveConfirmedBill(billPayload);
 
-    // 2. Refresh live today's summary counters from Supabase
+    // 2. Refresh live today's summary counters
     const updatedSummary = await fetchRemoteDailySummary();
-    setTodaySummary(updatedSummary);
+    if (updatedSummary) {
+      setTodaySummary(updatedSummary);
+    }
 
     // 3. Open Bill Preview Modal
     setPreviewBill(savedBill);
@@ -143,11 +197,11 @@ export default function App() {
     return savedBill;
   }, []);
 
-  // Handle direct print from Bill History
-  const handlePrintExistingBill = async (bill) => {
+  // Handle direct print from Bill History (Read-only reprint)
+  const handlePrintExistingBill = useCallback((bill) => {
     setPreviewBill(bill);
     setIsPreviewModalOpen(true);
-  };
+  }, []);
 
   return (
     <div className="min-h-screen text-[#18202B] flex flex-col font-sans select-none overflow-hidden">
@@ -166,54 +220,58 @@ export default function App() {
             onReplayIntro={() => setShowStartup(true)}
             onTriggerPWAInstall={triggerInstall}
             isInstalled={isInstalled}
+            isOnline={isOnline}
           />
 
-          {/* Main Content Area (With bottom padding for floating navigation on mobile) */}
+          {/* Main Content Area with Component-Level Error Boundary Isolation */}
           <main className="flex-1 flex overflow-hidden pb-18 sm:pb-0">
-            {activeTab === 'billing' && (
-              <BillingDashboard 
-                categories={categories}
-                items={items}
-                onConfirmBill={handleConfirmBill}
-                soundEnabled={soundEnabled}
-                onTriggerPWAInstall={triggerInstall}
-                isInstalled={isInstalled}
-              />
-            )}
+            <ErrorBoundary onGoToPOS={() => setActiveTab('billing')}>
+              {activeTab === 'billing' && (
+                <BillingDashboard 
+                  categories={categories}
+                  items={items}
+                  onConfirmBill={handleConfirmBill}
+                  soundEnabled={soundEnabled}
+                  onTriggerPWAInstall={triggerInstall}
+                  isInstalled={isInstalled}
+                  isOnline={isOnline}
+                />
+              )}
 
-            {activeTab === 'daily' && (
-              <DailyEarnings 
-                todaySummary={todaySummary}
-              />
-            )}
+              {activeTab === 'daily' && (
+                <DailyEarnings 
+                  todaySummary={todaySummary}
+                />
+              )}
 
-            {activeTab === 'history' && (
-              <BillHistory 
-                onSelectBillForPreview={(bill) => {
-                  setPreviewBill(bill);
-                  setIsPreviewModalOpen(true);
-                }}
-                onPrintBill={handlePrintExistingBill}
-              />
-            )}
+              {activeTab === 'history' && (
+                <BillHistory 
+                  onSelectBillForPreview={(bill) => {
+                    setPreviewBill(bill);
+                    setIsPreviewModalOpen(true);
+                  }}
+                  onPrintBill={handlePrintExistingBill}
+                />
+              )}
 
-            {activeTab === 'menu' && (
-              <MenuManagement 
-                categories={categories}
-                setCategories={setCategories}
-                items={items}
-                setItems={setItems}
-                printerSettings={printerSettings}
-                setPrinterSettings={setPrinterSettings}
-                soundEnabled={soundEnabled}
-                setSoundEnabled={handleSoundChange}
-                onTriggerPWAInstall={triggerInstall}
-                isAppInstalled={isInstalled}
-              />
-            )}
+              {activeTab === 'menu' && (
+                <MenuManagement 
+                  categories={categories}
+                  setCategories={setCategories}
+                  items={items}
+                  setItems={setItems}
+                  printerSettings={printerSettings}
+                  setPrinterSettings={setPrinterSettings}
+                  soundEnabled={soundEnabled}
+                  setSoundEnabled={handleSoundChange}
+                  onTriggerPWAInstall={triggerInstall}
+                  isAppInstalled={isInstalled}
+                />
+              )}
+            </ErrorBoundary>
           </main>
 
-          {/* Floating Frosted Glass Bottom Navigation Bar (Guaranteed Centered 4 Items) */}
+          {/* Floating Frosted Glass Bottom Navigation Bar */}
           <div className="fixed bottom-[max(10px,env(safe-area-inset-bottom))] left-0 right-0 z-40 flex justify-center px-3 pointer-events-none">
             <nav className="w-full max-w-md sm:max-w-lg glass-surface px-2.5 py-1.5 rounded-full border border-white/95 shadow-2xl backdrop-blur-2xl pointer-events-auto">
               <div className="grid grid-cols-4 gap-1.5 w-full">
@@ -255,7 +313,7 @@ export default function App() {
             />
           )}
 
-          {/* Bill Preview & Receipt Printing Modal */}
+          {/* Bill Preview & Receipt Printing Modal (Isolated Hardware Actions) */}
           {isPreviewModalOpen && previewBill && (
             <BillPreviewModal 
               bill={previewBill}

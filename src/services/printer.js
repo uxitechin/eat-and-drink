@@ -3,6 +3,7 @@
 
 import { EscPosBuilder } from './escpos.js';
 import { bluetoothPrinter } from './bluetoothPrinter.js';
+import { logger } from './logger.js';
 
 export { bluetoothPrinter };
 
@@ -10,6 +11,7 @@ export { bluetoothPrinter };
  * Generates canonical monospace receipt text for preview and monospace rendering.
  */
 export function generateReceiptText(bill, settings) {
+  if (!bill) return '';
   const is58mm = settings?.paperWidth === '58mm';
   const width = is58mm ? 32 : 44;
   const line = '-'.repeat(width);
@@ -27,7 +29,7 @@ export function generateReceiptText(bill, settings) {
 
   function itemRow(name, qty, amt) {
     const qtyStr = String(qty);
-    const amtStr = 'Rs.' + amt.toFixed(2);
+    const amtStr = 'Rs.' + Number(amt).toFixed(2);
     if (is58mm) {
       const maxNameLen = width - qtyStr.length - amtStr.length - 2;
       const truncName = name.length > maxNameLen ? name.substring(0, maxNameLen - 1) + '.' : name;
@@ -46,8 +48,8 @@ export function generateReceiptText(bill, settings) {
     center(settings?.shopName || 'EAT & DRINK'),
     center(settings?.shopLocation || 'MANGALAGIRI'),
     doubleLine,
-    row(`Bill No: ${bill.billNumber}`, bill.time || ''),
-    row(`Date: ${bill.date}`, `Pay: ${bill.paymentMethod}`),
+    row(`Bill No: ${bill.billNumber || '#000000'}`, bill.time || ''),
+    row(`Date: ${bill.date || ''}`, `Pay: ${bill.paymentMethod || 'CASH'}`),
     line,
   ];
 
@@ -61,7 +63,7 @@ export function generateReceiptText(bill, settings) {
   (bill.items || []).forEach(item => {
     const unitPrice = item.unitPrice || item.price || 0;
     const itemTotal = unitPrice * (item.quantity || 1);
-    lines.push(itemRow(item.itemName || item.name, item.quantity, itemTotal));
+    lines.push(itemRow(item.itemName || item.name || 'Item', item.quantity || 1, itemTotal));
   });
 
   lines.push(line);
@@ -75,7 +77,7 @@ export function generateReceiptText(bill, settings) {
     lines.push(row('Cash Given:', `Rs.${Number(bill.cashGiven).toFixed(2)}`));
     lines.push(row('Change:', `Rs.${Number(bill.change ?? (bill.cashGiven - bill.total)).toFixed(2)}`));
   }
-  lines.push(row('PAYMENT STATUS:', `${bill.paymentMethod} (PAID)`));
+  lines.push(row('PAYMENT STATUS:', `${bill.paymentMethod || 'CASH'} (PAID)`));
   lines.push(doubleLine);
   lines.push('');
   lines.push(center(settings?.footerMessage || 'THANK YOU! VISIT AGAIN'));
@@ -87,9 +89,13 @@ export function generateReceiptText(bill, settings) {
 
 /**
  * Direct ESC/POS Bluetooth Thermal Receipt Printer Dispatch
- * Checks for paired Bluetooth printer on this device and sends binary ESC/POS stream.
+ * Protected with complete error isolation: printer errors NEVER affect saved bill data.
  */
 export async function printReceipt(bill, settings = {}) {
+  if (!bill) {
+    throw new Error('No bill data provided for printing.');
+  }
+
   const savedConfig = bluetoothPrinter.getSavedConfig();
   const paperWidth = settings.paperWidth || savedConfig?.paperWidth || '80mm';
 
@@ -100,20 +106,21 @@ export async function printReceipt(bill, settings = {}) {
     throw err;
   }
 
-  // 1. Build ESC/POS binary command payload with monochrome logo
-  const builder = new EscPosBuilder(paperWidth);
-  const binaryPayload = await builder.buildReceipt(bill, {
-    shopName: settings.shopName || 'EAT & DRINK',
-    shopLocation: settings.shopLocation || 'MANGALAGIRI',
-    footerMessage: settings.footerMessage || 'THANK YOU! VISIT AGAIN'
-  });
-
-  // 2. Send over Bluetooth directly to printer head
   try {
+    // 1. Build ESC/POS binary command payload with monochrome logo
+    const builder = new EscPosBuilder(paperWidth);
+    const binaryPayload = await builder.buildReceipt(bill, {
+      shopName: settings.shopName || 'EAT & DRINK',
+      shopLocation: settings.shopLocation || 'MANGALAGIRI',
+      footerMessage: settings.footerMessage || 'THANK YOU! VISIT AGAIN'
+    });
+
+    // 2. Send over Bluetooth directly to printer head
     await bluetoothPrinter.writeBinaryChunks(binaryPayload);
     return { success: true, billNumber: bill.billNumber };
   } catch (err) {
-    if (err.message === 'PRINTER_OFFLINE') {
+    logger.warn('Printer', 'Print receipt failed', err);
+    if (err.message === 'PRINTER_OFFLINE' || err.code === 'PRINTER_OFFLINE') {
       const offlineErr = new Error('PRINTER_OFFLINE');
       offlineErr.code = 'PRINTER_OFFLINE';
       throw offlineErr;
@@ -135,12 +142,17 @@ export async function printTestReceipt(settings = {}) {
     throw err;
   }
 
-  const builder = new EscPosBuilder(paperWidth);
-  const binaryPayload = await builder.buildTestSlip({
-    shopName: settings.shopName || 'EAT & DRINK',
-    shopLocation: settings.shopLocation || 'MANGALAGIRI'
-  });
+  try {
+    const builder = new EscPosBuilder(paperWidth);
+    const binaryPayload = await builder.buildTestSlip({
+      shopName: settings.shopName || 'EAT & DRINK',
+      shopLocation: settings.shopLocation || 'MANGALAGIRI'
+    });
 
-  await bluetoothPrinter.writeBinaryChunks(binaryPayload);
-  return { success: true };
+    await bluetoothPrinter.writeBinaryChunks(binaryPayload);
+    return { success: true };
+  } catch (err) {
+    logger.warn('Printer', 'Test receipt print failed', err);
+    throw err;
+  }
 }

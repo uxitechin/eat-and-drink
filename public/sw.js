@@ -1,5 +1,6 @@
-// EAT & DRINK POS - Service Worker v4 (Zero White-Screen, Network-First for HTML & Dynamic Chunks)
-const CACHE_NAME = 'eat-drink-pos-v4';
+// EAT & DRINK POS - Service Worker v2026.09.1
+// Zero White-Screen, Network-First for HTML & Dynamic Chunks, Safe asset-only caching
+const CACHE_NAME = 'eat-drink-pos-v2026.09.1';
 
 const STATIC_ASSETS = [
   '/manifest.json',
@@ -29,7 +30,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[SW] Purging outdated cache:', key);
+            console.log('[SW] Purging outdated static asset cache:', key);
             return caches.delete(key);
           }
         })

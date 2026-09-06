@@ -12,19 +12,22 @@ import {
   ShoppingBag,
   ChevronLeft,
   ChevronRight,
-  Download
+  Download,
+  AlertCircle
 } from 'lucide-react';
 import { playBeep, playSuccess, playClear } from '../services/sound';
+import { logger } from '../services/logger';
 
 export default function BillingDashboard({ 
-  categories, 
-  items, 
+  categories = [], 
+  items = [], 
   onConfirmBill, 
-  soundEnabled,
+  soundEnabled = true,
   onTriggerPWAInstall,
-  isInstalled
+  isInstalled = false,
+  isOnline = true
 }) {
-  const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id || 'cat_lassi');
+  const [selectedCategory, setSelectedCategory] = useState(() => categories[0]?.id || 'cat_lassi');
   const [itemSearch, setItemSearch] = useState('');
   
   // Cart state
@@ -36,12 +39,21 @@ export default function BillingDashboard({
   const [customerPhone, setCustomerPhone] = useState('');
   const [cashTendered, setCashTendered] = useState('');
   const [cashError, setCashError] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   // Mobile Bottom Sheet Cart State
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const searchInputRef = useRef(null);
   const categoryScrollRef = useRef(null);
+
+  // Sync default category if categories load after mount
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some(c => c.id === selectedCategory)) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, selectedCategory]);
 
   // Keyboard shortcut '/' to focus search
   useEffect(() => {
@@ -57,10 +69,10 @@ export default function BillingDashboard({
 
   // Filtered items
   const filteredItems = useMemo(() => {
-    let list = items.filter(it => it.active !== false);
+    let list = items.filter(it => it && it.active !== false);
     if (itemSearch.trim()) {
       const q = itemSearch.toLowerCase();
-      return list.filter(it => it.name.toLowerCase().includes(q));
+      return list.filter(it => (it.name || '').toLowerCase().includes(q));
     }
     return list.filter(it => it.categoryId === selectedCategory);
   }, [items, selectedCategory, itemSearch]);
@@ -78,7 +90,7 @@ export default function BillingDashboard({
   const categoryCounts = useMemo(() => {
     const map = {};
     items.forEach(it => {
-      if (it.active !== false) {
+      if (it && it.active !== false) {
         map[it.categoryId] = (map[it.categoryId] || 0) + 1;
       }
     });
@@ -95,6 +107,7 @@ export default function BillingDashboard({
 
   // Add item to cart
   const handleAddItem = (item) => {
+    if (!item || !item.id) return;
     if (soundEnabled) playBeep();
     setCartItems(prev => {
       const existing = prev.find(i => i.id === item.id);
@@ -104,7 +117,7 @@ export default function BillingDashboard({
       return [...prev, {
         id: item.id,
         name: item.name,
-        price: item.price,
+        price: Number(item.price) || 0,
         categoryId: item.categoryId,
         quantity: 1
       }];
@@ -143,6 +156,7 @@ export default function BillingDashboard({
     setDiscountValue(0);
     setCashTendered('');
     setCashError('');
+    setSubmitError('');
   };
 
   // Calculations
@@ -170,10 +184,7 @@ export default function BillingDashboard({
     return cartItems.reduce((sum, it) => sum + it.quantity, 0);
   }, [cartItems]);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-
-  // Confirm Bill Action (Async with double-click protection)
+  // Confirm Bill Action (Idempotent with double-click locking)
   const handleConfirm = async () => {
     if (cartItems.length === 0 || isSubmitting) return;
 
@@ -191,7 +202,11 @@ export default function BillingDashboard({
     const tenderedNum = paymentMethod === 'CASH' && cashTendered !== '' ? Number(cashTendered) : undefined;
     const changeAmt = tenderedNum !== undefined && tenderedNum >= grandTotal ? tenderedNum - grandTotal : undefined;
 
+    // Unique transaction UUID for idempotency
+    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
     const billPayload = {
+      transactionId: transactionId,
       items: cartItems.map(it => ({
         itemId: it.id,
         itemName: it.name,
@@ -221,18 +236,20 @@ export default function BillingDashboard({
       setDiscountValue(0);
       setCashTendered('');
       setCashError('');
+      setSubmitError('');
       setCustomerName('');
       setCustomerPhone('');
       setIsMobileCartOpen(false);
     } catch (err) {
-      setSubmitError('Unable to save bill. Please try again.');
-      alert('Unable to save bill. Please try again.');
+      logger.error('BillingDashboard', 'Bill confirmation failed', err);
+      const userMsg = err?.message || 'Unable to save bill. Please try again.';
+      setSubmitError(userMsg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const activeCategoryObj = categories.find(c => c.id === selectedCategory);
+  const activeCategoryObj = categories.find(c => c && c.id === selectedCategory);
 
   // Shared Light Frosted Glass Cart Component
   const renderCartContent = (isDrawer = false) => (
@@ -255,6 +272,7 @@ export default function BillingDashboard({
           {cartItems.length > 0 && (
             <button
               onClick={handleClearCart}
+              disabled={isSubmitting}
               className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1 rounded-full border border-rose-200/60 flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3 h-3" />
@@ -287,7 +305,7 @@ export default function BillingDashboard({
         ) : (
           cartItems.map(item => {
             const itemTotal = item.price * item.quantity;
-            const catObj = categories.find(c => c.id === item.categoryId);
+            const catObj = categories.find(c => c && c.id === item.categoryId);
 
             return (
               <div 
@@ -313,6 +331,7 @@ export default function BillingDashboard({
                 {/* Quantity Stepper */}
                 <div className="flex items-center bg-white/80 rounded-xl border border-[#D8E1EC] p-0.5 shrink-0 shadow-xs">
                   <button
+                    disabled={isSubmitting}
                     onClick={() => handleDecrement(item.id)}
                     className="p-1 rounded-lg text-[#697586] hover:text-[#18202B] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
                   >
@@ -322,6 +341,7 @@ export default function BillingDashboard({
                     {item.quantity}
                   </span>
                   <button
+                    disabled={isSubmitting}
                     onClick={() => handleIncrement(item.id)}
                     className="p-1 rounded-lg text-[#697586] hover:text-[#18202B] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
                   >
@@ -331,6 +351,7 @@ export default function BillingDashboard({
 
                 {/* Delete Button */}
                 <button
+                  disabled={isSubmitting}
                   onClick={() => handleRemove(item.id)}
                   className="p-1 text-[#98A2B3] hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
                   title="Remove item"
@@ -346,6 +367,27 @@ export default function BillingDashboard({
       {/* Calculations & Payment Controls */}
       <div className="pt-2.5 border-t border-[#D8E1EC]/60 space-y-2 shrink-0">
         
+        {/* Submit Error Banner if any */}
+        {submitError && (
+          <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+            <button onClick={() => setSubmitError('')} className="p-0.5">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Offline notice */}
+        {!isOnline && (
+          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Terminal is Offline. Bills will sync when reconnected.</span>
+          </div>
+        )}
+
         {/* Quick Discount Selector */}
         <div className="flex items-center justify-between text-xs">
           <span className="text-[#697586] font-semibold flex items-center gap-1 text-[11px]">
@@ -356,6 +398,7 @@ export default function BillingDashboard({
               <button
                 key={pct}
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => {
                   setDiscountType('percent');
                   setDiscountValue(pct);
@@ -372,6 +415,7 @@ export default function BillingDashboard({
             <input
               type="number"
               placeholder="₹"
+              disabled={isSubmitting}
               value={discountType === 'amount' && discountValue > 0 ? discountValue : ''}
               onChange={(e) => {
                 setDiscountType('amount');
@@ -410,6 +454,7 @@ export default function BillingDashboard({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => {
                 setPaymentMethod('CASH');
                 setCashError('');
@@ -426,6 +471,7 @@ export default function BillingDashboard({
 
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => {
                 setPaymentMethod('UPI');
                 setCashError('');
@@ -450,6 +496,7 @@ export default function BillingDashboard({
               <input
                 type="number"
                 placeholder="e.g. 500"
+                disabled={isSubmitting}
                 value={cashTendered}
                 onChange={(e) => {
                   setCashTendered(e.target.value);
@@ -481,7 +528,7 @@ export default function BillingDashboard({
           }`}
         >
           <CheckCircle2 className={`w-5 h-5 stroke-[2.5] ${isSubmitting ? 'animate-spin' : ''}`} />
-          <span>{isSubmitting ? 'SAVING TO SUPABASE...' : `CONFIRM BILL • ₹${grandTotal.toFixed(2)}`}</span>
+          <span>{isSubmitting ? 'CONFIRMING BILL...' : `CONFIRM BILL • ₹${grandTotal.toFixed(2)}`}</span>
         </button>
       </div>
     </div>
@@ -495,7 +542,7 @@ export default function BillingDashboard({
       {/* ---------------------------------------------------- */}
       <div className="col-span-12 lg:col-span-8 xl:col-span-8 flex flex-col overflow-hidden glass-surface rounded-[32px] p-4">
         
-        {/* PWA Install Quick Banner (Visible when running in browser) */}
+        {/* PWA Install Quick Banner */}
         {!isInstalled && onTriggerPWAInstall && (
           <div className="glass-surface p-3 rounded-[24px] mb-3 flex items-center justify-between gap-3 border border-[#FF5B4A]/30 bg-gradient-to-r from-white via-white/95 to-[#FF5B4A]/10 shadow-sm shrink-0 animate-pop-in">
             <div className="flex items-center gap-2.5">
@@ -518,7 +565,7 @@ export default function BillingDashboard({
           </div>
         )}
 
-        {/* 1. Global Fast Search Bar (Frosted Glass Search Capsule) */}
+        {/* 1. Global Fast Search Bar */}
         <div className="relative mb-3.5 shrink-0">
           <div className="relative flex items-center">
             <Search className="w-4 h-4 absolute left-4 text-[#697586] pointer-events-none" />
@@ -541,7 +588,7 @@ export default function BillingDashboard({
           </div>
         </div>
 
-        {/* 2. HORIZONTAL CATEGORY NAVIGATION (Frosted Glass Pills) */}
+        {/* 2. HORIZONTAL CATEGORY NAVIGATION */}
         <div className="relative mb-3 shrink-0 flex items-center gap-2">
           {/* Scroll Left Button */}
           <button
@@ -559,6 +606,7 @@ export default function BillingDashboard({
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {categories.map(cat => {
+              if (!cat) return null;
               const isSelected = selectedCategory === cat.id && !itemSearch.trim();
               const count = categoryCounts[cat.id] || 0;
 
@@ -613,7 +661,7 @@ export default function BillingDashboard({
           </div>
         </div>
 
-        {/* 4. Menu Items Grid (Frosted Glass Cards — Pure Typography, Orange Price & Button) */}
+        {/* 4. Menu Items Grid */}
         <div className="flex-1 overflow-y-auto pr-1 py-1 pb-40 lg:pb-4">
           {filteredItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-[#98A2B3] py-16 text-center">
@@ -625,7 +673,7 @@ export default function BillingDashboard({
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
               {filteredItems.map(item => {
                 const inCartQty = cartQtyMap[item.id] || 0;
-                const catObj = categories.find(c => c.id === item.categoryId);
+                const catObj = categories.find(c => c && c.id === item.categoryId);
 
                 return (
                   <div
@@ -688,7 +736,7 @@ export default function BillingDashboard({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* RIGHT: DESKTOP LIGHT FROSTED GLASS ACTIVE BILL / CART */}
+      {/* RIGHT: DESKTOP ACTIVE BILL / CART                     */}
       {/* ---------------------------------------------------- */}
       <div className="hidden lg:flex lg:col-span-4 xl:col-span-4 glass-surface rounded-[32px] p-4.5 flex-col overflow-hidden">
         {renderCartContent(false)}
@@ -741,4 +789,3 @@ export default function BillingDashboard({
     </div>
   );
 }
-

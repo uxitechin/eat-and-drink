@@ -1,6 +1,8 @@
 // Bluetooth Thermal Printer Driver for ESC/POS POS-58 / POS-80 Printers
 // Features: One-Time Device Setup, Silent Auto-Reconnect, MTU Chunked Binary Writer
 
+import { logger } from './logger.js';
+
 const PRINTER_STORAGE_KEY = 'eat_drink_device_printer_config';
 
 // Common Bluetooth Thermal Printer Service UUIDs
@@ -34,7 +36,9 @@ class BluetoothPrinterManager {
   notifyStatus(status) {
     this.status = status;
     this.listeners.forEach(cb => {
-      try { cb(status); } catch (e) {}
+      try { cb(status); } catch (err) {
+        logger.warn('Bluetooth', 'Error notifying listener', err);
+      }
     });
   }
 
@@ -51,7 +55,8 @@ class BluetoothPrinterManager {
     try {
       const data = localStorage.getItem(PRINTER_STORAGE_KEY);
       return data ? JSON.parse(data) : null;
-    } catch (e) {
+    } catch (err) {
+      logger.warn('Bluetooth', 'Error parsing printer config from storage', err);
       return null;
     }
   }
@@ -64,19 +69,27 @@ class BluetoothPrinterManager {
         ...config,
         savedAt: Date.now()
       }));
-    } catch (e) {}
+    } catch (err) {
+      logger.warn('Bluetooth', 'Error saving printer config', err);
+    }
   }
 
   // Forget saved printer
   forgetPrinter() {
     if (this.device && this.server && this.server.connected) {
-      try { this.device.gatt.disconnect(); } catch (e) {}
+      try { this.device.gatt.disconnect(); } catch (err) {
+        logger.warn('Bluetooth', 'Error disconnecting GATT server', err);
+      }
     }
     this.device = null;
     this.server = null;
     this.characteristic = null;
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(PRINTER_STORAGE_KEY);
+      try {
+        localStorage.removeItem(PRINTER_STORAGE_KEY);
+      } catch (err) {
+        logger.warn('Bluetooth', 'Error removing printer key from storage', err);
+      }
     }
     this.notifyStatus('unconfigured');
   }
@@ -158,7 +171,9 @@ class BluetoothPrinterManager {
             break;
           }
         }
-      } catch (e) {}
+      } catch (err) {
+        logger.warn('Bluetooth', 'Error reading characteristics', err);
+      }
       if (writeChar) break;
     }
 
@@ -200,7 +215,8 @@ class BluetoothPrinterManager {
         this.characteristic = char;
         this.notifyStatus('connected');
         return char;
-      } catch (e) {
+      } catch (err) {
+        logger.warn('Bluetooth', 'GATT reconnect failed', err);
         this.notifyStatus('offline');
         return null;
       }
@@ -220,7 +236,9 @@ class BluetoothPrinterManager {
           this.notifyStatus('connected');
           return char;
         }
-      } catch (e) {}
+      } catch (err) {
+        logger.warn('Bluetooth', 'getDevices reconnect failed', err);
+      }
     }
 
     this.notifyStatus('offline');
