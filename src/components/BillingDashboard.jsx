@@ -24,8 +24,7 @@ export default function BillingDashboard({
   onConfirmBill, 
   soundEnabled = true,
   onTriggerPWAInstall,
-  isInstalled = false,
-  isOnline = true
+  isInstalled = false
 }) {
   const [selectedCategory, setSelectedCategory] = useState(() => categories[0]?.id || 'cat_lassi');
   const [itemSearch, setItemSearch] = useState('');
@@ -377,14 +376,6 @@ export default function BillingDashboard({
             <button onClick={() => setSubmitError('')} className="p-0.5">
               <X className="w-3 h-3" />
             </button>
-          </div>
-        )}
-
-        {/* Offline notice */}
-        {!isOnline && (
-          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span>Terminal is Offline. Bills will sync when reconnected.</span>
           </div>
         )}
 

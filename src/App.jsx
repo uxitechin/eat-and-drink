@@ -220,7 +220,6 @@ export default function App() {
             onReplayIntro={() => setShowStartup(true)}
             onTriggerPWAInstall={triggerInstall}
             isInstalled={isInstalled}
-            isOnline={isOnline}
           />
 
           {/* Main Content Area with Component-Level Error Boundary Isolation */}
@@ -234,7 +233,6 @@ export default function App() {
                   soundEnabled={soundEnabled}
                   onTriggerPWAInstall={triggerInstall}
                   isInstalled={isInstalled}
-                  isOnline={isOnline}
                 />
               )}
 
