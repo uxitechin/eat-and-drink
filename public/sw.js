@@ -1,8 +1,7 @@
-// EAT & DRINK POS - Service Worker for Fast App Launch & Standalone PWA Mode
-const CACHE_NAME = 'eat-drink-pos-v2';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
+// EAT & DRINK POS - Service Worker v4 (Zero White-Screen, Network-First for HTML & Dynamic Chunks)
+const CACHE_NAME = 'eat-drink-pos-v4';
+
+const STATIC_ASSETS = [
   '/manifest.json',
   '/favicon.png',
   '/favicon.svg',
@@ -19,7 +18,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      return cache.addAll(STATIC_ASSETS);
     }).then(() => self.skipWaiting())
   );
 });
@@ -30,6 +29,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Purging outdated cache:', key);
             return caches.delete(key);
           }
         })
@@ -38,38 +38,73 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  // Ignore Supabase and chrome-extension requests in SW cache
+
   const url = new URL(event.request.url);
-  if (url.origin.includes('supabase.co') || url.protocol === 'chrome-extension:') {
+
+  // Bypass external API calls, Supabase, and browser extensions
+  if (
+    url.origin.includes('supabase.co') || 
+    url.protocol.startsWith('chrome-extension') ||
+    url.protocol.startsWith('moz-extension')
+  ) {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch in background to update cache
-        fetch(event.request).then((networkResponse) => {
+  // 1. HTML Navigation Requests -> Always Network First!
+  // This guarantees new deployment chunk hashes in index.html are NEVER blocked by stale cache.
+  if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
-            });
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
           }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
+          return networkResponse;
+        })
+        .catch(() => {
+          // Fallback to offline cached shell if offline
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
+  // 2. Static Assets (Images, Icons) -> Cache First with Network Fallback
+  if (STATIC_ASSETS.includes(url.pathname)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // 3. Dynamic Build Chunks (/assets/*.js, /assets/*.css) -> Network First with Cache Fallback
+  event.respondWith(
+    fetch(event.request)
+      .then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
         return networkResponse;
-      });
-    }).catch(() => {
-      return caches.match('/index.html');
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });
