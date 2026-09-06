@@ -11,6 +11,15 @@ const KEYS = {
   LAST_BILL_SEQ: 'eat_drink_last_bill_seq',
 };
 
+// Filter out test-generated bills
+const EXCLUDED_TEST_BILLS = new Set(['#000030', '#000031', '#000032', '#000033', '#000034']);
+export const isTestBill = (b) => {
+  if (!b) return false;
+  const num = b.billNumber || b.bill_number || '';
+  const cust = b.customerName || b.customer_name || '';
+  return EXCLUDED_TEST_BILLS.has(num) || cust === 'Test Cashier';
+};
+
 // Safe LocalStorage helpers that never throw and never clear other data
 function safeGetJSON(key, fallback) {
   if (typeof localStorage === 'undefined') return fallback;
@@ -153,6 +162,7 @@ export async function getNextBillNumber() {
       const { data, error } = await supabase
         .from('bills')
         .select('bill_number')
+        .not('bill_number', 'in', '("#000030","#000031","#000032","#000033","#000034")')
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -163,27 +173,28 @@ export async function getNextBillNumber() {
           return `#${String(nextSeq).padStart(6, '0')}`;
         }
       }
-      return '#000001';
+      return '#000030';
     } catch (e) {
       logger.warn('Storage', 'Error querying next bill number from Supabase', e);
     }
   }
 
   // Fallback to local sequence
-  let seq = parseInt(safeGetJSON(KEYS.LAST_BILL_SEQ, '0'), 10);
-  if (isNaN(seq)) seq = 0;
+  let seq = parseInt(safeGetJSON(KEYS.LAST_BILL_SEQ, '29'), 10);
+  if (isNaN(seq) || seq >= 30) seq = 29;
   seq += 1;
   safeSetJSON(KEYS.LAST_BILL_SEQ, String(seq));
   return `#${String(seq).padStart(6, '0')}`;
 }
 
 export function getAllBills() {
-  return safeGetJSON(KEYS.BILLS, []);
+  return safeGetJSON(KEYS.BILLS, []).filter(b => !isTestBill(b));
 }
 
 export function saveBills(bills) {
   if (Array.isArray(bills)) {
-    safeSetJSON(KEYS.BILLS, bills);
+    const clean = bills.filter(b => !isTestBill(b));
+    safeSetJSON(KEYS.BILLS, clean);
   }
 }
 
@@ -275,7 +286,6 @@ export async function saveConfirmedBill(billData) {
         const { error: itemsError } = await supabase.from('bill_items').insert(lineItems);
         if (itemsError) {
           logger.error('Storage', 'Failed to insert bill items into Supabase', itemsError);
-          // Attempt rollback of the orphan bill header
           try {
             await supabase.from('bills').delete().eq('id', billRecord.id);
           } catch (rollbackErr) {
@@ -311,29 +321,31 @@ export async function fetchRemoteBills() {
 
     if (error) throw error;
     if (data && Array.isArray(data)) {
-      const mapped = data.map(b => ({
-        id: b.id,
-        billNumber: b.bill_number,
-        subtotal: Number(b.subtotal),
-        discount: Number(b.discount),
-        total: Number(b.total),
-        paymentMethod: b.payment_method,
-        cashGiven: b.cash_given ? Number(b.cash_given) : undefined,
-        change: b.change_given ? Number(b.change_given) : undefined,
-        customerName: b.customer_name || '',
-        customerPhone: b.customer_phone || '',
-        dateKey: b.bill_date,
-        date: formatDateDisplay(b.bill_date),
-        time: new Date(b.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        items: (b.bill_items || []).map(bi => ({
-          itemName: bi.item_name,
-          name: bi.item_name,
-          unitPrice: Number(bi.unit_price),
-          price: Number(bi.unit_price),
-          quantity: bi.quantity,
-        })),
-        createdAt: b.created_at,
-      }));
+      const mapped = data
+        .filter(b => !isTestBill(b))
+        .map(b => ({
+          id: b.id,
+          billNumber: b.bill_number,
+          subtotal: Number(b.subtotal),
+          discount: Number(b.discount),
+          total: Number(b.total),
+          paymentMethod: b.payment_method,
+          cashGiven: b.cash_given ? Number(b.cash_given) : undefined,
+          change: b.change_given ? Number(b.change_given) : undefined,
+          customerName: b.customer_name || '',
+          customerPhone: b.customer_phone || '',
+          dateKey: b.bill_date,
+          date: formatDateDisplay(b.bill_date),
+          time: new Date(b.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          items: (b.bill_items || []).map(bi => ({
+            itemName: bi.item_name,
+            name: bi.item_name,
+            unitPrice: Number(bi.unit_price),
+            price: Number(bi.unit_price),
+            quantity: bi.quantity,
+          })),
+          createdAt: b.created_at,
+        }));
       saveBills(mapped);
 
       // Rebuild & sync daily summaries directly from Supabase source of truth
@@ -412,13 +424,14 @@ export async function fetchRemoteDailySummary(dateKey = getTodayDateKey()) {
 
     if (error) throw error;
 
+    const validBills = (bills || []).filter(b => !isTestBill(b));
     let totalSales = 0;
     let cashSales = 0;
     let upiSales = 0;
-    let billCount = bills?.length || 0;
+    let billCount = validBills.length;
     let itemCount = 0;
 
-    (bills || []).forEach(b => {
+    validBills.forEach(b => {
       const amt = Number(b.total) || 0;
       totalSales += amt;
       if (b.payment_method === 'CASH') {
@@ -465,6 +478,7 @@ export function saveDailySummaries(summaries) {
 }
 
 function updateDailySummary(dateKey, bill) {
+  if (isTestBill(bill)) return;
   const summaries = getAllDailySummaries();
   const current = summaries[dateKey] || {
     dateKey: dateKey,
@@ -534,18 +548,15 @@ export function savePrinterSettings(settings) {
 
 // --- RESET ALL BILLS (Admin Deliberate Action with Safety Guard) ---
 export async function clearAllBillsAndResetSales(adminKey) {
-  // Safety guard against accidental programmatic invocation
   if (adminKey !== 'CONFIRM_ADMIN_RESET_2026') {
     logger.warn('Storage', 'Attempted unauthorized database reset blocked.');
     return false;
   }
 
-  // 1. Clear local storage records
   safeSetJSON(KEYS.BILLS, []);
   safeSetJSON(KEYS.DAILY_SUMMARIES, {});
   safeSetJSON(KEYS.LAST_BILL_SEQ, '0');
 
-  // 2. Clear Supabase tables if configured
   if (isSupabaseConfigured) {
     try {
       await supabase.from('bill_items').delete().neq('item_name', '__non_existent__');
@@ -568,7 +579,7 @@ export function exportFullDatabase() {
     bills: getAllBills(),
     dailySummaries: getAllDailySummaries(),
     printerSettings: getPrinterSettings(),
-    lastBillSeq: safeGetJSON(KEYS.LAST_BILL_SEQ, '0'),
+    lastBillSeq: safeGetJSON(KEYS.LAST_BILL_SEQ, '29'),
   };
 }
 
