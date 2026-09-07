@@ -13,7 +13,6 @@ import {
   getAllDailySummaries, 
   getTodayDateKey, 
   formatDateDisplay, 
-  clearAllBillsAndResetSales,
   deleteDateBills 
 } from '../services/storage';
 
@@ -101,13 +100,6 @@ export default function DailyEarnings({ todaySummary }) {
     document.body.removeChild(link);
   };
 
-  const handleResetAllSales = async () => {
-    if (window.confirm('Are you sure you want to reset all bills and start sales from ₹0?')) {
-      await clearAllBillsAndResetSales('CONFIRM_ADMIN_RESET_2026');
-      window.location.reload();
-    }
-  };
-
   const handleDeleteCurrentDate = async () => {
     if (window.confirm(`Are you sure you want to delete all recorded data for ${formatDateDisplay(selectedDateKey)}?`)) {
       await deleteDateBills(selectedDateKey);
@@ -164,15 +156,6 @@ export default function DailyEarnings({ todaySummary }) {
               <span>Delete {formatDateDisplay(selectedDateKey)} Data</span>
             </button>
           )}
-
-          <button
-            onClick={handleResetAllSales}
-            className="px-4 py-2 glass-pill hover:bg-rose-50 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="Clear all test bills and reset revenue counters to ₹0"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to ₹0</span>
-          </button>
         </div>
       </div>
 
