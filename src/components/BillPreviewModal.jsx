@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Printer, 
   Check, 
@@ -19,6 +19,28 @@ export default function BillPreviewModal({
   const savedPrinter = bluetoothPrinter.getSavedConfig();
   const [paperWidth, setPaperWidth] = useState(savedPrinter?.paperWidth || printerSettings?.paperWidth || '80mm');
   const [copied, setCopied] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [inlineNotice, setInlineNotice] = useState('');
+  
+  // Track if printer is actively paired/configured on this device
+  const [isPrinterConnected, setIsPrinterConnected] = useState(() => {
+    return Boolean(
+      (bluetoothPrinter.server && bluetoothPrinter.server.connected && bluetoothPrinter.characteristic) ||
+      bluetoothPrinter.getSavedConfig()
+    );
+  });
+
+  // Keep state synchronized with bluetooth manager
+  useEffect(() => {
+    const unsub = bluetoothPrinter.onStatusChange((status) => {
+      if (status === 'connected') {
+        setIsPrinterConnected(true);
+      } else if (status === 'unconfigured') {
+        setIsPrinterConnected(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   if (!bill) return null;
 
@@ -33,16 +55,41 @@ export default function BillPreviewModal({
 
   // 1. Pair / Connect Bluetooth Thermal Printer
   const handlePairPrinter = async () => {
+    setInlineNotice('');
     try {
-      await bluetoothPrinter.pairNewPrinter(paperWidth);
-      await printReceipt(bill, receiptConfig);
-      if (onPrintSuccess) onPrintSuccess();
+      const config = await bluetoothPrinter.pairNewPrinter(paperWidth);
+      if (config && bluetoothPrinter.characteristic) {
+        setIsPrinterConnected(true);
+        // Once paired, immediately print the receipt
+        await printReceipt(bill, { ...receiptConfig, paperWidth });
+        if (onPrintSuccess) onPrintSuccess();
+      }
     } catch (err) {
       logger.warn('BillPreviewModal', 'Pair printer error', err);
+      if (err.name !== 'NotFoundError' && err.name !== 'AbortError') {
+        setInlineNotice('Printer unavailable. Bill is already saved.');
+      }
     }
   };
 
-  // 2. Browser / System Print
+  // 2. Direct Thermal Print via ESC/POS
+  const handleDirectPrint = async () => {
+    if (isPrinting) return;
+    setIsPrinting(true);
+    setInlineNotice('');
+    try {
+      await printReceipt(bill, { ...receiptConfig, paperWidth });
+      if (onPrintSuccess) onPrintSuccess();
+    } catch (err) {
+      logger.warn('BillPreviewModal', 'Direct thermal print error', err);
+      setIsPrinterConnected(false);
+      setInlineNotice('Printer unavailable. Bill is already saved.');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  // 3. Browser / System Print Dialog (Zero Bluetooth dependency)
   const handleSystemPrint = () => {
     try {
       window.print();
@@ -141,18 +188,37 @@ export default function BillPreviewModal({
           </div>
         </div>
 
+        {/* Clean Inline Failure Notice (Non-intrusive) */}
+        {inlineNotice && (
+          <p className="text-[11px] font-bold text-rose-700 text-center pb-1.5 animate-pop-in">
+            {inlineNotice}
+          </p>
+        )}
+
         {/* Action Buttons: Clean 2x2 Layout */}
         <div className="pt-2 border-t border-[#D8E1EC]/60 flex flex-col gap-2 shrink-0">
           {/* Row 1: Printer Actions */}
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handlePairPrinter}
-              className="w-full py-2.5 px-3 glass-pill text-[#18202B] hover:text-black rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
-            >
-              <Bluetooth className="w-4 h-4 text-[#FF5B4A] stroke-[2.5] shrink-0" />
-              <span>Pair Printer</span>
-            </button>
+            {isPrinterConnected ? (
+              <button
+                type="button"
+                onClick={handleDirectPrint}
+                disabled={isPrinting}
+                className="w-full py-2.5 px-3 glass-btn-coral rounded-2xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-[0.98] transition-all"
+              >
+                <Printer className="w-4 h-4 stroke-[2.5] shrink-0" />
+                <span>{isPrinting ? 'Printing...' : 'PRINT RECEIPT'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePairPrinter}
+                className="w-full py-2.5 px-3 glass-pill text-[#18202B] hover:text-black rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+              >
+                <Bluetooth className="w-4 h-4 text-[#FF5B4A] stroke-[2.5] shrink-0" />
+                <span>Pair Printer</span>
+              </button>
+            )}
 
             <button
               type="button"
