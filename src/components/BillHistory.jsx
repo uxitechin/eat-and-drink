@@ -7,19 +7,28 @@ import {
   CreditCard, 
   Banknote, 
   Download, 
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 import { getAllBills } from '../services/storage';
 
-export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
+export default function BillHistory({ 
+  bills: propBills, 
+  onSelectBillForPreview, 
+  onPrintBill,
+  onRefresh
+}) {
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('ALL'); // 'ALL', 'CASH', 'UPI'
   const [dateFilter, setDateFilter] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const allBills = getAllBills();
+  // Use reactive prop if available, otherwise safe local fallback
+  const allBills = propBills && Array.isArray(propBills) ? propBills : getAllBills();
 
   const filteredBills = useMemo(() => {
-    return allBills.filter(bill => {
+    return (allBills || []).filter(bill => {
+      if (!bill) return false;
       if (paymentFilter !== 'ALL' && bill.paymentMethod !== paymentFilter) {
         return false;
       }
@@ -28,10 +37,10 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
       }
       if (search.trim()) {
         const q = search.toLowerCase();
-        const matchesBillNo = bill.billNumber.toLowerCase().includes(q);
+        const matchesBillNo = (bill.billNumber || '').toLowerCase().includes(q);
         const matchesCustomer = (bill.customerName || '').toLowerCase().includes(q);
         const matchesItem = (bill.items || []).some(it => 
-          (it.itemName || it.name || '').toLowerCase().includes(q)
+          (it?.itemName || it?.name || '').toLowerCase().includes(q)
         );
         return matchesBillNo || matchesCustomer || matchesItem;
       }
@@ -43,14 +52,14 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
     const rows = [
       ['Bill No', 'Date', 'Time', 'Payment Method', 'Items Count', 'Subtotal', 'Discount', 'Total'],
       ...filteredBills.map(b => [
-        b.billNumber,
-        b.date,
-        b.time,
-        b.paymentMethod,
-        b.items.reduce((s, i) => s + i.quantity, 0),
-        b.subtotal,
-        b.discount,
-        b.total
+        b.billNumber || '',
+        b.date || '',
+        b.time || '',
+        b.paymentMethod || 'CASH',
+        (b.items || []).reduce((s, i) => s + (Number(i.quantity) || 1), 0),
+        Number(b.subtotal || 0).toFixed(2),
+        Number(b.discount || 0).toFixed(2),
+        Number(b.total || 0).toFixed(2)
       ])
     ];
 
@@ -64,6 +73,17 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
     document.body.removeChild(link);
   };
 
+  const handleManualRefresh = async () => {
+    if (onRefresh && !isRefreshing) {
+      setIsRefreshing(true);
+      try {
+        await onRefresh();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
+    }
+  };
+
   return (
     <div className="flex-1 p-4 overflow-hidden flex flex-col space-y-3.5 max-w-7xl mx-auto w-full select-none">
       {/* Top Search & Filters */}
@@ -74,20 +94,34 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
               <History className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-base font-black text-[#18202B]">Bill History & Receipts</h1>
+              <h1 className="text-base font-black text-[#18202B]">Bill History &amp; Receipts</h1>
               <p className="text-xs text-[#697586] font-medium">
                 Found {filteredBills.length} recorded {filteredBills.length === 1 ? 'bill' : 'bills'}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={handleExportCSV}
-            className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shadow-xs"
-          >
-            <Download className="w-4 h-4 text-[#FF5B4A]" />
-            <span>Export CSV</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="p-2 glass-pill text-[#697586] hover:text-[#18202B] rounded-full cursor-pointer transition-colors"
+                title="Sync latest bills from server"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-[#FF5B4A]' : ''}`} />
+              </button>
+            )}
+
+            <button
+              onClick={handleExportCSV}
+              className="px-4 py-2 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Download className="w-4 h-4 text-[#FF5B4A]" />
+              <span>Export CSV</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter Bar */}
@@ -147,7 +181,7 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
               <thead className="sticky top-0 bg-[#E9EEF5] text-[#697586] uppercase font-black tracking-wider text-[10px] border-b border-[#D8E1EC] z-10">
                 <tr>
                   <th className="py-3.5 px-4">Bill No</th>
-                  <th className="py-3.5 px-3">Date & Time</th>
+                  <th className="py-3.5 px-3">Date &amp; Time</th>
                   <th className="py-3.5 px-3">Items Ordered</th>
                   <th className="py-3.5 px-3">Payment</th>
                   <th className="py-3.5 px-4 text-right">Amount</th>
@@ -156,26 +190,26 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
               </thead>
               <tbody className="divide-y divide-[#D8E1EC]/50">
                 {filteredBills.map((bill) => {
-                  const totalItemsCount = (bill.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+                  const totalItemsCount = (bill.items || []).reduce((s, i) => s + (Number(i.quantity) || 1), 0);
                   const isCash = bill.paymentMethod === 'CASH';
 
                   return (
                     <tr 
-                      key={bill.id}
+                      key={bill.id || bill.billNumber}
                       className="hover:bg-white/60 transition-colors group"
                     >
                       <td className="py-3.5 px-4 font-mono font-black text-[#FF5B4A] text-sm">
-                        {bill.billNumber}
+                        {bill.billNumber || '#000000'}
                       </td>
 
                       <td className="py-3.5 px-3 text-[#18202B]">
-                        <div className="font-bold text-[#18202B]">{bill.date}</div>
-                        <div className="text-[11px] text-[#697586] font-mono">{bill.time}</div>
+                        <div className="font-bold text-[#18202B]">{bill.date || ''}</div>
+                        <div className="text-[11px] text-[#697586] font-mono">{bill.time || ''}</div>
                       </td>
 
                       <td className="py-3.5 px-3 text-[#18202B] max-w-[280px]">
                         <div className="font-bold text-[#18202B] truncate">
-                          {(bill.items || []).map(it => `${it.itemName || it.name} (${it.quantity})`).join(', ')}
+                          {(bill.items || []).map(it => `${it.itemName || it.name || 'Item'} (${it.quantity || 1})`).join(', ')}
                         </div>
                         <div className="text-[10px] text-[#697586] font-medium">
                           {totalItemsCount} total {totalItemsCount === 1 ? 'item' : 'items'}
@@ -189,7 +223,7 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
                             : 'bg-sky-50 text-sky-800 border-sky-300'
                         }`}>
                           {isCash ? <Banknote className="w-3 h-3 text-emerald-600" /> : <CreditCard className="w-3 h-3 text-sky-600" />}
-                          <span>{bill.paymentMethod}</span>
+                          <span>{bill.paymentMethod || 'CASH'}</span>
                         </span>
                       </td>
 
@@ -211,7 +245,7 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
                           <button
                             onClick={() => onPrintBill(bill)}
                             className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
-                            title="Print Receipt Again"
+                            title="Print Receipt Again (Read Only)"
                           >
                             <Printer className="w-3.5 h-3.5 text-[#FF5B4A]" />
                             <span className="hidden sm:inline">Print</span>
@@ -229,4 +263,3 @@ export default function BillHistory({ onSelectBillForPreview, onPrintBill }) {
     </div>
   );
 }
-

@@ -1,8 +1,10 @@
-// EAT & DRINK POS - Service Worker v2026.09.1
+// EAT & DRINK POS - Service Worker v2026.09.2
 // Zero White-Screen, Network-First for HTML & Dynamic Chunks, Safe asset-only caching
-const CACHE_NAME = 'eat-drink-pos-v2026.09.1';
+const CACHE_NAME = 'eat-drink-pos-v2026.09.2';
 
 const STATIC_ASSETS = [
+  '/',
+  '/index.html',
   '/manifest.json',
   '/favicon.png',
   '/favicon.svg',

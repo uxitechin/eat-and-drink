@@ -20,6 +20,7 @@ import { logger, APP_VERSION } from './services/logger';
 import { 
   getCategories, 
   getItems, 
+  getAllBills,
   getTodaySummary, 
   getPrinterSettings, 
   savePrinterSettings,
@@ -34,7 +35,7 @@ import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 export default function App() {
   const [showStartup, setShowStartup] = useState(true);
   const [activeTab, setActiveTab] = useState('billing'); // 'billing', 'daily', 'history', 'menu'
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [syncStatus, setSyncStatus] = useState({ online: typeof navigator !== 'undefined' ? navigator.onLine : true, syncing: false });
 
   // PWA Installation Hook
   const { 
@@ -49,6 +50,7 @@ export default function App() {
   // App data state (Instantly initialized with safe cached/default values)
   const [categories, setCategories] = useState(() => getCategories());
   const [items, setItems] = useState(() => getItems());
+  const [bills, setBills] = useState(() => getAllBills());
   const [todaySummary, setTodaySummary] = useState(() => getTodaySummary());
   const [printerSettings, setPrinterSettings] = useState(() => getPrinterSettings());
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -68,23 +70,51 @@ export default function App() {
     { id: 'menu', label: 'Menu Admin', shortLabel: 'Menu', hotkey: 'F4', icon: UtensilsCrossed },
   ], []);
 
+  // Synchronize remote data cleanly without overwriting if offline/error
+  const syncRemoteData = useCallback(async () => {
+    if (!isSupabaseConfigured || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+      return;
+    }
+
+    setSyncStatus(prev => ({ ...prev, syncing: true }));
+
+    try {
+      const [remoteCats, remoteItems, remoteBills, remoteSummary] = await Promise.allSettled([
+        fetchRemoteCategories(),
+        fetchRemoteItems(),
+        fetchRemoteBills(),
+        fetchRemoteDailySummary()
+      ]);
+
+      if (remoteCats.status === 'fulfilled' && remoteCats.value && remoteCats.value.length > 0) {
+        setCategories(remoteCats.value);
+      }
+      if (remoteItems.status === 'fulfilled' && remoteItems.value && remoteItems.value.length > 0) {
+        setItems(remoteItems.value);
+      }
+      if (remoteBills.status === 'fulfilled' && remoteBills.value && Array.isArray(remoteBills.value)) {
+        setBills(remoteBills.value);
+      }
+      if (remoteSummary.status === 'fulfilled' && remoteSummary.value) {
+        setTodaySummary(remoteSummary.value);
+      }
+    } catch (err) {
+      logger.warn('App', 'Non-blocking sync error', err);
+    } finally {
+      setSyncStatus(prev => ({ ...prev, syncing: false }));
+    }
+  }, []);
+
   // Online / Offline network event listeners
   useEffect(() => {
     const handleOnline = () => {
       logger.info('Network', 'Application came online');
-      setIsOnline(true);
-      // Sync fresh data from remote when returning online
-      if (isSupabaseConfigured) {
-        fetchRemoteCategories().then(cats => cats && cats.length > 0 && setCategories(cats));
-        fetchRemoteItems().then(itms => itms && itms.length > 0 && setItems(itms));
-        fetchRemoteBills().then(() => {
-          fetchRemoteDailySummary().then(s => s && setTodaySummary(s));
-        });
-      }
+      setSyncStatus({ online: true, syncing: false });
+      syncRemoteData();
     };
     const handleOffline = () => {
       logger.warn('Network', 'Application is offline. Using local cached data.');
-      setIsOnline(false);
+      setSyncStatus({ online: false, syncing: false });
     };
 
     window.addEventListener('online', handleOnline);
@@ -93,46 +123,29 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [syncRemoteData]);
 
   // Safe Application Startup: Purely READ ONLY synchronization
   useEffect(() => {
     let isMounted = true;
     logger.info('App', `Initializing EAT & DRINK POS v${APP_VERSION}`);
 
-    if (isSupabaseConfigured && navigator.onLine) {
-      // 1. Fetch remote categories (never overwrites if null/empty)
-      fetchRemoteCategories()
-        .then(cats => {
-          if (isMounted && cats && cats.length > 0) setCategories(cats);
-        })
-        .catch(err => logger.warn('App', 'Remote categories load failed', err));
+    syncRemoteData();
 
-      // 2. Fetch remote menu items (never overwrites if null/empty)
-      fetchRemoteItems()
-        .then(itms => {
-          if (isMounted && itms && itms.length > 0) setItems(itms);
-        })
-        .catch(err => logger.warn('App', 'Remote items load failed', err));
-
-      // 3. Fetch remote bills and sync summary
-      fetchRemoteBills()
-        .then(() => {
-          return fetchRemoteDailySummary();
-        })
-        .then(summary => {
-          if (isMounted && summary) setTodaySummary(summary);
-        })
-        .catch(err => logger.warn('App', 'Remote summary sync failed', err));
-
-      // 4. Realtime subscription for multi-terminal sync
+    // Realtime subscription for multi-terminal sync
+    if (isSupabaseConfigured) {
       const channel = supabase
         .channel('public:bills')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bills' }, () => {
           if (isMounted) {
-            fetchRemoteBills().then(() => {
-              fetchRemoteDailySummary().then(s => s && isMounted && setTodaySummary(s));
-            });
+            fetchRemoteBills().then(latestBills => {
+              if (isMounted && latestBills) {
+                setBills(latestBills);
+              }
+              return fetchRemoteDailySummary();
+            }).then(s => {
+              if (s && isMounted) setTodaySummary(s);
+            }).catch(e => logger.warn('App', 'Realtime sync error', e));
           }
         })
         .subscribe();
@@ -146,7 +159,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [syncRemoteData]);
 
   // Sync sound settings changes
   const handleSoundChange = useCallback((enabled) => {
@@ -182,16 +195,23 @@ export default function App() {
 
   // Handle bill confirmation from cashier (Idempotent & Transaction Safe)
   const handleConfirmBill = useCallback(async (billPayload) => {
-    // 1. Save bill in Supabase & local cache
+    // 1. Save bill in Supabase (Authoritative Atomic Transaction)
     const savedBill = await saveConfirmedBill(billPayload);
 
-    // 2. Refresh live today's summary counters
-    const updatedSummary = await fetchRemoteDailySummary();
-    if (updatedSummary) {
-      setTodaySummary(updatedSummary);
-    }
+    // 2. Reactively update local bills state without duplication
+    setBills(prev => {
+      const exists = prev.some(b => b.id === savedBill.id || (b.idempotencyKey && b.idempotencyKey === savedBill.idempotencyKey));
+      return exists ? prev : [savedBill, ...prev];
+    });
 
-    // 3. Open Bill Preview Modal
+    // 3. Refresh live today's summary counters
+    fetchRemoteDailySummary().then(updatedSummary => {
+      if (updatedSummary) {
+        setTodaySummary(updatedSummary);
+      }
+    }).catch(() => {});
+
+    // 4. Open Bill Preview Modal
     setPreviewBill(savedBill);
     setIsPreviewModalOpen(true);
     return savedBill;
@@ -220,6 +240,7 @@ export default function App() {
             onReplayIntro={() => setShowStartup(true)}
             onTriggerPWAInstall={triggerInstall}
             isInstalled={isInstalled}
+            isOnline={syncStatus.online}
           />
 
           {/* Main Content Area with Component-Level Error Boundary Isolation */}
@@ -239,16 +260,20 @@ export default function App() {
               {activeTab === 'daily' && (
                 <DailyEarnings 
                   todaySummary={todaySummary}
+                  bills={bills}
+                  onRefresh={syncRemoteData}
                 />
               )}
 
               {activeTab === 'history' && (
                 <BillHistory 
+                  bills={bills}
                   onSelectBillForPreview={(bill) => {
                     setPreviewBill(bill);
                     setIsPreviewModalOpen(true);
                   }}
                   onPrintBill={handlePrintExistingBill}
+                  onRefresh={syncRemoteData}
                 />
               )}
 
@@ -296,7 +321,7 @@ export default function App() {
             </nav>
           </div>
 
-          {/* Custom PWA Install Prompt Banner / Popup */}
+          {/* Custom PWA Install Prompt Banner */}
           {showPrompt && !isInstalled && (
             <InstallPromptModal 
               onInstall={triggerInstall} 

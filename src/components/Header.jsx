@@ -11,7 +11,8 @@ import {
   RotateCcw, 
   Menu, 
   X,
-  Download
+  Download,
+  WifiOff
 } from 'lucide-react';
 
 export default function Header({ 
@@ -22,7 +23,8 @@ export default function Header({
   setSoundEnabled, 
   onReplayIntro,
   onTriggerPWAInstall,
-  isInstalled
+  isInstalled,
+  isOnline = true
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -76,6 +78,14 @@ export default function Header({
               </span>
             </div>
           </div>
+
+          {/* Offline warning badge */}
+          {!isOnline && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-[11px] font-bold shadow-xs">
+              <WifiOff className="w-3.5 h-3.5 text-amber-600" />
+              <span>Offline Mode (Saved Data Safe)</span>
+            </div>
+          )}
         </div>
 
         {/* Mobile Action Controls & Toggle */}
@@ -93,14 +103,14 @@ export default function Header({
 
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2 rounded-2xl glass-pill text-[#697586] hover:text-[#18202B]"
+            className="p-2 rounded-2xl glass-pill text-[#697586] hover:text-[#18202B] cursor-pointer"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-[#FF5B4A]" /> : <VolumeX className="w-4 h-4 text-[#98A2B3]" />}
           </button>
           
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-2xl glass-pill text-[#18202B]"
+            className="p-2 rounded-2xl glass-pill text-[#18202B] cursor-pointer"
           >
             {mobileMenuOpen ? <X className="w-4 h-4 text-[#FF5B4A]" /> : <Menu className="w-4 h-4" />}
           </button>

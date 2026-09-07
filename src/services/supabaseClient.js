@@ -8,7 +8,7 @@ const getEnv = (key, fallback = '') => {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
       return process.env[key];
     }
-  } catch (e) {}
+  } catch (_e) {}
   return fallback;
 };
 

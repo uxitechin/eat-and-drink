@@ -4,9 +4,10 @@ import {
   Banknote, 
   CreditCard, 
   Download, 
-  Award,
-  PieChart,
-  RotateCcw
+  Award, 
+  PieChart, 
+  RotateCcw,
+  RefreshCw
 } from 'lucide-react';
 import { 
   getAllBills, 
@@ -16,49 +17,65 @@ import {
   deleteDateBills 
 } from '../services/storage';
 
-export default function DailyEarnings({ todaySummary }) {
+export default function DailyEarnings({ 
+  todaySummary: _todaySummary, 
+  bills: propBills, 
+  onRefresh 
+}) {
   const [selectedDateKey, setSelectedDateKey] = useState(getTodayDateKey());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const allSummaries = getAllDailySummaries();
-  const allBills = getAllBills();
+  const allBills = propBills && Array.isArray(propBills) ? propBills : getAllBills();
 
-  const activeSummary = useMemo(() => {
-    if (selectedDateKey === getTodayDateKey()) {
-      return todaySummary || {
-        totalSales: 0,
-        cashSales: 0,
-        upiSales: 0,
-        billCount: 0,
-        itemCount: 0
-      };
-    }
-    return allSummaries[selectedDateKey] || {
-      totalSales: 0,
-      cashSales: 0,
-      upiSales: 0,
-      billCount: 0,
-      itemCount: 0
-    };
-  }, [selectedDateKey, todaySummary, allSummaries]);
-
+  // Filter bills strictly for the selected date
   const dayBills = useMemo(() => {
-    return allBills.filter(b => b.dateKey === selectedDateKey);
+    return (allBills || []).filter(b => b && b.dateKey === selectedDateKey);
   }, [allBills, selectedDateKey]);
 
-  const averageBill = useMemo(() => {
-    if (!activeSummary.billCount || activeSummary.billCount === 0) return 0;
-    return Math.round(activeSummary.totalSales / activeSummary.billCount);
-  }, [activeSummary]);
+  // Derive authoritative metrics directly from confirmed bills for this date
+  const activeSummary = useMemo(() => {
+    let totalSales = 0;
+    let cashSales = 0;
+    let upiSales = 0;
+    let itemCount = 0;
+    const billCount = dayBills.length;
+
+    dayBills.forEach(b => {
+      const amt = Number(b.total) || 0;
+      totalSales += amt;
+      if (b.paymentMethod === 'CASH') {
+        cashSales += amt;
+      } else {
+        upiSales += amt;
+      }
+      (b.items || []).forEach(it => {
+        itemCount += Number(it.quantity) || 1;
+      });
+    });
+
+    return {
+      totalSales,
+      cashSales,
+      upiSales,
+      billCount,
+      itemCount,
+      avgBill: billCount > 0 ? Math.round(totalSales / billCount) : 0,
+    };
+  }, [dayBills]);
 
   const topItems = useMemo(() => {
     const map = {};
     dayBills.forEach(bill => {
       (bill.items || []).forEach(it => {
-        const name = it.itemName || it.name;
+        const name = it.itemName || it.name || 'Item';
         if (!map[name]) {
           map[name] = { name, quantity: 0, revenue: 0 };
         }
-        map[name].quantity += it.quantity;
-        map[name].revenue += (it.unitPrice || it.price) * it.quantity;
+        const qty = Number(it.quantity) || 1;
+        const price = Number(it.unitPrice || it.price) || 0;
+        map[name].quantity += qty;
+        map[name].revenue += price * qty;
       });
     });
     return Object.values(map).sort((a, b) => b.quantity - a.quantity).slice(0, 8);
@@ -66,9 +83,12 @@ export default function DailyEarnings({ todaySummary }) {
 
   const availableDates = useMemo(() => {
     const set = new Set(Object.keys(allSummaries));
+    (allBills || []).forEach(b => {
+      if (b && b.dateKey) set.add(b.dateKey);
+    });
     set.add(getTodayDateKey());
     return Array.from(set).sort().reverse();
-  }, [allSummaries]);
+  }, [allSummaries, allBills]);
 
   const totalSales = activeSummary.totalSales || 0;
   const cashPct = totalSales > 0 ? Math.round((activeSummary.cashSales / totalSales) * 100) : 50;
@@ -78,15 +98,15 @@ export default function DailyEarnings({ todaySummary }) {
     const rows = [
       ['Date', 'Bill No', 'Time', 'Customer', 'Items Count', 'Payment Method', 'Subtotal', 'Discount', 'Total'],
       ...dayBills.map(b => [
-        b.date,
-        b.billNumber,
-        b.time,
+        b.date || '',
+        b.billNumber || '',
+        b.time || '',
         b.customerName || 'Walk-in',
-        b.items.reduce((s, i) => s + i.quantity, 0),
-        b.paymentMethod,
-        b.subtotal,
-        b.discount,
-        b.total
+        (b.items || []).reduce((s, i) => s + (Number(i.quantity) || 1), 0),
+        b.paymentMethod || 'CASH',
+        Number(b.subtotal || 0).toFixed(2),
+        Number(b.discount || 0).toFixed(2),
+        Number(b.total || 0).toFixed(2)
       ])
     ];
 
@@ -104,7 +124,18 @@ export default function DailyEarnings({ todaySummary }) {
     if (window.confirm(`Are you sure you want to delete all recorded data for ${formatDateDisplay(selectedDateKey)}?`)) {
       await deleteDateBills(selectedDateKey);
       setSelectedDateKey(getTodayDateKey());
-      window.location.reload();
+      if (onRefresh) onRefresh();
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    if (onRefresh && !isRefreshing) {
+      setIsRefreshing(true);
+      try {
+        await onRefresh();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
     }
   };
 
@@ -118,7 +149,7 @@ export default function DailyEarnings({ todaySummary }) {
             <TrendingUp className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-black text-[#18202B]">Daily Earnings & Performance</h1>
+            <h1 className="text-base font-black text-[#18202B]">Daily Earnings &amp; Performance</h1>
             <p className="text-xs text-[#697586] font-medium">
               {selectedDateKey === getTodayDateKey() ? "Viewing Today's Live Sales" : `Viewing Historical Date: ${formatDateDisplay(selectedDateKey)}`}
             </p>
@@ -126,10 +157,22 @@ export default function DailyEarnings({ todaySummary }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="p-2 glass-pill text-[#697586] hover:text-[#18202B] rounded-full cursor-pointer transition-colors"
+              title="Sync latest sales data from server"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-[#FF5B4A]' : ''}`} />
+            </button>
+          )}
+
           <select
             value={selectedDateKey}
             onChange={(e) => setSelectedDateKey(e.target.value)}
-            className="glass-pill text-[#18202B] text-xs font-bold rounded-full px-4 py-2 focus:outline-none focus:border-[#FF5B4A]"
+            className="glass-pill text-[#18202B] text-xs font-bold rounded-full px-4 py-2 focus:outline-none focus:border-[#FF5B4A] cursor-pointer"
           >
             {availableDates.map(d => (
               <option key={d} value={d}>
@@ -213,7 +256,7 @@ export default function DailyEarnings({ todaySummary }) {
           <span className="text-[10px] font-bold text-[#697586] uppercase tracking-wider">Avg Bill Value</span>
           <div className="mt-2">
             <span className="text-2xl font-black text-[#18202B] font-mono">
-              ₹{averageBill.toLocaleString('en-IN')}
+              ₹{activeSummary.avgBill.toLocaleString('en-IN')}
             </span>
           </div>
           <span className="text-[10px] text-[#697586] mt-1">Per customer</span>
@@ -270,7 +313,7 @@ export default function DailyEarnings({ todaySummary }) {
               <div className="flex items-center justify-between p-3 glass-inset rounded-2xl">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-sky-500" />
-                  <span className="font-bold text-[#18202B]">UPI & Online QR</span>
+                  <span className="font-bold text-[#18202B]">UPI &amp; Online QR</span>
                 </div>
                 <div className="flex items-center gap-3 font-mono font-bold">
                   <span className="text-sky-700">₹{(activeSummary.upiSales || 0).toLocaleString('en-IN')}</span>
@@ -282,7 +325,7 @@ export default function DailyEarnings({ todaySummary }) {
 
           <div className="mt-4 p-3.5 glass-pill rounded-2xl text-[11px] text-[#697586] flex items-center justify-between">
             <span>Location: <strong className="text-[#18202B]">MANGALAGIRI</strong></span>
-            <span>Shop: <strong className="text-[#FF5B4A]">EAT & DRINK</strong></span>
+            <span>Shop: <strong className="text-[#FF5B4A]">EAT &amp; DRINK</strong></span>
           </div>
         </div>
 

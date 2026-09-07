@@ -4,22 +4,18 @@ import {
   Bluetooth, 
   RefreshCw, 
   Trash2, 
-  AlertCircle,
-  FileText,
-  Download,
-  Upload,
-  CheckCircle2
+  AlertCircle, 
+  FileText, 
+  Download, 
+  Upload, 
+  CheckCircle2 
 } from 'lucide-react';
 import { bluetoothPrinter, printTestReceipt } from '../services/printer';
 import { exportFullDatabase, importFullDatabase } from '../services/storage';
 
 export default function PrinterSettings({ 
   settings, 
-  setSettings, 
-  soundEnabled, 
-  setSoundEnabled,
-  onTriggerPWAInstall,
-  isAppInstalled
+  setSettings 
 }) {
   const [printerConfig, setPrinterConfig] = useState(bluetoothPrinter.getSavedConfig());
   const [printerStatus, setPrinterStatus] = useState(bluetoothPrinter.getStatus());
@@ -86,7 +82,7 @@ export default function PrinterSettings({
       } else {
         setErrorMessage('Printer is offline or turned off. Please ensure Bluetooth is enabled.');
       }
-    } catch (err) {
+    } catch (_err) {
       setErrorMessage('Could not reconnect to thermal printer.');
     } finally {
       setIsReconnecting(false);
@@ -144,13 +140,13 @@ export default function PrinterSettings({
       try {
         const json = JSON.parse(evt.target.result);
         const res = importFullDatabase(json);
-        if (res.success) {
+        if (res && res.success) {
           setDbStatus('Database imported successfully! Refreshing...');
           setTimeout(() => window.location.reload(), 1200);
         } else {
           alert('Invalid backup file format.');
         }
-      } catch (err) {
+      } catch (_err) {
         alert('Could not read backup file.');
       }
     };
@@ -160,9 +156,7 @@ export default function PrinterSettings({
   return (
     <div className="space-y-4 max-w-4xl mx-auto w-full select-none pb-12 animate-pop-in">
       
-      {/* ---------------------------------------------------- */}
-      {/* 1. BLUETOOTH THERMAL PRINTER CARD                    */}
-      {/* ---------------------------------------------------- */}
+      {/* 1. BLUETOOTH THERMAL PRINTER CARD */}
       <div className="glass-surface p-5 sm:p-6 rounded-[36px] shadow-sm border border-white/95 flex flex-col gap-4">
         
         {/* Header with Live Status Dot */}
@@ -174,7 +168,7 @@ export default function PrinterSettings({
             <div>
               <h2 className="text-base font-black text-[#18202B]">Bluetooth Thermal Printer</h2>
               <p className="text-xs text-[#697586] font-medium">
-                One-time device pairing � Automatic background reconnect
+                One-time device pairing • Automatic background reconnect
               </p>
             </div>
           </div>
@@ -214,7 +208,7 @@ export default function PrinterSettings({
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
-            <button onClick={() => setErrorMessage('')} className="text-rose-600 hover:text-rose-900 font-black">
+            <button onClick={() => setErrorMessage('')} className="text-rose-600 hover:text-rose-900 font-black cursor-pointer">
               &times;
             </button>
           </div>
@@ -239,7 +233,7 @@ export default function PrinterSettings({
                 {printerConfig?.name || 'No Bluetooth printer paired on this device'}
               </h3>
               <p className="text-xs text-[#697586] mt-0.5">
-                {printerConfig ? `Protocol: Direct ESC/POS � Device ID: ${printerConfig.id.substring(0, 12)}...` : 'Pair your 58mm or 80mm printer once.'}
+                {printerConfig ? `Protocol: Direct ESC/POS • Device ID: ${printerConfig.id.substring(0, 12)}...` : 'Pair your 58mm or 80mm printer once.'}
               </p>
             </div>
 
@@ -332,9 +326,7 @@ export default function PrinterSettings({
 
       </div>
 
-      {/* ---------------------------------------------------- */}
-      {/* 2. DATABASE BACKUP & RESTORE                         */}
-      {/* ---------------------------------------------------- */}
+      {/* 2. DATABASE BACKUP & RESTORE */}
       <div className="glass-surface p-5 sm:p-6 rounded-[36px] shadow-sm border border-white/95 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div>

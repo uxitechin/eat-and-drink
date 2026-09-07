@@ -7,9 +7,11 @@ import {
   CheckCheck, 
   Bluetooth,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 import { printReceipt, generateReceiptText, bluetoothPrinter } from '../services/printer';
+import { logger } from '../services/logger';
 
 export default function BillPreviewModal({ 
   bill, 
@@ -39,8 +41,8 @@ export default function BillPreviewModal({
 
   const receiptFormattedText = generateReceiptText(bill, receiptConfig);
 
-  // 1. Direct Print Flow
-  const handlePrint = async () => {
+  // 1. Direct Bluetooth Print Flow
+  const handleBluetoothPrint = async () => {
     setIsPrinting(true);
     setPrintStatus('idle');
     setErrorMessage('');
@@ -49,7 +51,7 @@ export default function BillPreviewModal({
       setPrintStatus('success');
       if (onPrintSuccess) onPrintSuccess();
     } catch (err) {
-      console.warn('Thermal print exception:', err);
+      logger.warn('BillPreviewModal', 'Thermal print exception', err);
       if (err.code === 'NO_PRINTER_CONFIGURED') {
         setPrintStatus('no_printer');
       } else if (err.code === 'PRINTER_OFFLINE') {
@@ -63,35 +65,48 @@ export default function BillPreviewModal({
     }
   };
 
-  // 2. Direct Setup from Modal if first time on this device
+  // 2. Direct Browser / System Print Dialog Fallback (Zero Bluetooth Dependency)
+  const handleBrowserSystemPrint = () => {
+    try {
+      window.print();
+      setPrintStatus('success');
+    } catch (err) {
+      logger.warn('BillPreviewModal', 'Browser print failed', err);
+    }
+  };
+
+  // 3. Direct Setup / Pair from Modal
   const handlePairPrinterFromModal = async () => {
     setIsPairing(true);
+    setErrorMessage('');
     try {
       await bluetoothPrinter.pairNewPrinter(paperWidth);
       setPrintStatus('idle');
       // Immediately print after pairing
-      await handlePrint();
+      await handleBluetoothPrint();
     } catch (err) {
       if (err.name !== 'NotFoundError') {
-        setErrorMessage(err.message || 'Pairing failed.');
+        setErrorMessage(err.message || 'Bluetooth pairing failed.');
       }
     } finally {
       setIsPairing(false);
     }
   };
 
-  // 3. Reconnect from Modal
+  // 4. Reconnect from Modal
   const handleReconnectFromModal = async () => {
     setIsReconnecting(true);
+    setErrorMessage('');
     try {
       const char = await bluetoothPrinter.autoReconnect();
       if (char) {
         setPrintStatus('idle');
-        await handlePrint();
+        await handleBluetoothPrint();
       } else {
-        setErrorMessage('Printer is still offline. Please power on the device.');
+        setErrorMessage('Printer is still offline. Please power on the device or click "Pair Printer".');
       }
     } catch (err) {
+      logger.warn('BillPreviewModal', 'Reconnect failed', err);
       setErrorMessage('Could not reconnect to thermal printer.');
     } finally {
       setIsReconnecting(false);
@@ -99,10 +114,12 @@ export default function BillPreviewModal({
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(receiptFormattedText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(receiptFormattedText).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {});
+    }
   };
 
   return (
@@ -120,7 +137,7 @@ export default function BillPreviewModal({
             <div>
               <h2 className="text-base font-black text-[#18202B] leading-tight">Bill Generated</h2>
               <p className="text-xs font-mono font-bold text-[#FF5B4A]">
-                {bill.billNumber} � {bill.paymentMethod}
+                {bill.billNumber || '#000000'} • {bill.paymentMethod || 'CASH'}
               </p>
             </div>
           </div>
@@ -173,7 +190,7 @@ export default function BillPreviewModal({
             <img 
               src="/eat-and-drink.png" 
               alt="EAT & DRINK" 
-              className="h-12 w-auto mb-1.5 object-contain"
+              className="h-12 w-auto mb-1.5 object-contain" 
             />
             <pre 
               id="printable-receipt"
@@ -185,16 +202,14 @@ export default function BillPreviewModal({
           </div>
         </div>
 
-        {/* ---------------------------------------------------- */}
-        {/* PRINT STATUS FEEDBACK BANNERS                        */}
-        {/* ---------------------------------------------------- */}
+        {/* PRINT STATUS FEEDBACK BANNERS */}
         {printStatus === 'success' && (
           <div className="mb-2 p-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center justify-between animate-pop-in">
             <div className="flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
               <span>Receipt printed successfully.</span>
             </div>
-            <button onClick={() => setPrintStatus('idle')} className="text-emerald-700 hover:text-emerald-900 p-0.5">
+            <button onClick={() => setPrintStatus('idle')} className="text-emerald-700 hover:text-emerald-900 p-0.5 cursor-pointer">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -205,14 +220,15 @@ export default function BillPreviewModal({
           <div className="mb-2 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>No thermal printer connected on this device yet.</span>
+              <span>No thermal printer connected on this device yet. (Bill is safely saved)</span>
             </div>
             <div className="flex items-center justify-end gap-2 pt-1 border-t border-amber-200">
               <button 
-                onClick={() => setPrintStatus('idle')}
-                className="px-3 py-1.5 glass-pill text-amber-800 rounded-full text-xs font-bold cursor-pointer"
+                onClick={handleBrowserSystemPrint}
+                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
               >
-                PRINT LATER
+                <FileText className="w-3.5 h-3.5" />
+                <span>System Print</span>
               </button>
               <button 
                 onClick={handlePairPrinterFromModal}
@@ -235,10 +251,19 @@ export default function BillPreviewModal({
             </div>
             <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-200">
               <button 
-                onClick={() => setPrintStatus('idle')}
-                className="px-3 py-1.5 glass-pill text-rose-800 rounded-full text-xs font-bold cursor-pointer"
+                onClick={handleBrowserSystemPrint}
+                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
               >
-                PRINT LATER
+                <FileText className="w-3.5 h-3.5" />
+                <span>System Print</span>
+              </button>
+              <button 
+                onClick={handlePairPrinterFromModal}
+                disabled={isPairing}
+                className="px-3 py-1.5 glass-pill text-rose-800 rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
+              >
+                <Bluetooth className="w-3.5 h-3.5" />
+                <span>Pair Printer</span>
               </button>
               <button 
                 onClick={handleReconnectFromModal}
@@ -254,23 +279,24 @@ export default function BillPreviewModal({
 
         {/* General Error Banner */}
         {printStatus === 'error' && (
-          <div className="mb-2 p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center justify-between animate-pop-in">
+          <div className="mb-2 p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMessage || 'Printing failed. Please check thermal printer.'}</span>
+              <span>{errorMessage || 'Printing failed. (Bill is safely saved)'}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-200">
               <button 
-                onClick={handlePrint}
-                className="px-3 py-1 bg-rose-600 text-white rounded-full text-[11px] font-black cursor-pointer hover:bg-rose-700"
+                onClick={handleBrowserSystemPrint}
+                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
               >
-                RETRY
+                <FileText className="w-3.5 h-3.5" />
+                <span>System Print</span>
               </button>
               <button 
-                onClick={() => setPrintStatus('idle')}
-                className="px-2.5 py-1 glass-pill text-rose-700 rounded-full text-[11px] font-bold cursor-pointer"
+                onClick={handleBluetoothPrint}
+                className="px-4 py-1.5 bg-rose-600 text-white rounded-full text-xs font-black cursor-pointer hover:bg-rose-700"
               >
-                CLOSE
+                RETRY BLUETOOTH
               </button>
             </div>
           </div>
@@ -307,7 +333,7 @@ export default function BillPreviewModal({
 
             <button
               type="button"
-              onClick={handlePrint}
+              onClick={handleBluetoothPrint}
               disabled={isPrinting}
               className="px-6 py-2.5 glass-btn-coral rounded-full text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95"
             >

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Plus, 
@@ -17,6 +17,10 @@ import {
 } from 'lucide-react';
 import { playBeep, playSuccess, playClear } from '../services/sound';
 import { logger } from '../services/logger';
+
+function generateIdempotencyKey() {
+  return `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
 
 export default function BillingDashboard({ 
   categories = [], 
@@ -44,12 +48,18 @@ export default function BillingDashboard({
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Synchronous Lock Ref to completely block rapid multi-clicks before React re-render
+  const isSubmittingRef = useRef(false);
+
+  // Idempotency key per cart checkout session
+  const currentIdempotencyKeyRef = useRef(generateIdempotencyKey());
+
   const searchInputRef = useRef(null);
   const categoryScrollRef = useRef(null);
 
   // Sync default category if categories load after mount
   useEffect(() => {
-    if (categories.length > 0 && !categories.some(c => c.id === selectedCategory)) {
+    if (categories && categories.length > 0 && !categories.some(c => c && c.id === selectedCategory)) {
       setSelectedCategory(categories[0].id);
     }
   }, [categories, selectedCategory]);
@@ -66,9 +76,9 @@ export default function BillingDashboard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Filtered items
+  // Filtered items (Defensive against nulls)
   const filteredItems = useMemo(() => {
-    let list = items.filter(it => it && it.active !== false);
+    let list = (items || []).filter(it => it && it.active !== false);
     if (itemSearch.trim()) {
       const q = itemSearch.toLowerCase();
       return list.filter(it => (it.name || '').toLowerCase().includes(q));
@@ -79,8 +89,10 @@ export default function BillingDashboard({
   // In-cart quantity map for fast badges
   const cartQtyMap = useMemo(() => {
     const map = {};
-    cartItems.forEach(it => {
-      map[it.id] = it.quantity;
+    (cartItems || []).forEach(it => {
+      if (it && it.id) {
+        map[it.id] = it.quantity;
+      }
     });
     return map;
   }, [cartItems]);
@@ -88,8 +100,8 @@ export default function BillingDashboard({
   // Category counts map
   const categoryCounts = useMemo(() => {
     const map = {};
-    items.forEach(it => {
-      if (it && it.active !== false) {
+    (items || []).forEach(it => {
+      if (it && it.active !== false && it.categoryId) {
         map[it.categoryId] = (map[it.categoryId] || 0) + 1;
       }
     });
@@ -115,9 +127,9 @@ export default function BillingDashboard({
       }
       return [...prev, {
         id: item.id,
-        name: item.name,
+        name: item.name || 'Dish',
         price: Number(item.price) || 0,
-        categoryId: item.categoryId,
+        categoryId: item.categoryId || '',
         quantity: 1
       }];
     });
@@ -148,7 +160,7 @@ export default function BillingDashboard({
   };
 
   // Clear cart
-  const handleClearCart = () => {
+  const handleClearCart = useCallback(() => {
     if (cartItems.length === 0) return;
     if (soundEnabled) playClear();
     setCartItems([]);
@@ -156,11 +168,12 @@ export default function BillingDashboard({
     setCashTendered('');
     setCashError('');
     setSubmitError('');
-  };
+    currentIdempotencyKeyRef.current = generateIdempotencyKey();
+  }, [cartItems.length, soundEnabled]);
 
   // Calculations
   const subtotal = useMemo(() => {
-    return cartItems.reduce((sum, it) => sum + (it.price * it.quantity), 0);
+    return (cartItems || []).reduce((sum, it) => sum + ((Number(it.price) || 0) * (Number(it.quantity) || 1)), 0);
   }, [cartItems]);
 
   const discountAmount = useMemo(() => {
@@ -180,14 +193,17 @@ export default function BillingDashboard({
   }, [paymentMethod, cashTendered, grandTotal]);
 
   const totalCartCount = useMemo(() => {
-    return cartItems.reduce((sum, it) => sum + it.quantity, 0);
+    return (cartItems || []).reduce((sum, it) => sum + (Number(it.quantity) || 1), 0);
   }, [cartItems]);
 
-  // Confirm Bill Action (Idempotent with double-click locking)
+  // Confirm Bill Action (Synchronous Lock + Idempotency Key + Safe Cart Clearing)
   const handleConfirm = async () => {
-    if (cartItems.length === 0 || isSubmitting) return;
+    // 1. Immediate Synchronous Lock Check
+    if (isSubmittingRef.current || isSubmitting || (cartItems || []).length === 0) {
+      return;
+    }
 
-    // Validate Cash Given if Cash payment is selected
+    // 2. Validate Cash Given if Cash payment is selected
     if (paymentMethod === 'CASH' && cashTendered !== '') {
       const tenderedNum = Number(cashTendered) || 0;
       if (tenderedNum < grandTotal) {
@@ -201,17 +217,18 @@ export default function BillingDashboard({
     const tenderedNum = paymentMethod === 'CASH' && cashTendered !== '' ? Number(cashTendered) : undefined;
     const changeAmt = tenderedNum !== undefined && tenderedNum >= grandTotal ? tenderedNum - grandTotal : undefined;
 
-    // Unique transaction UUID for idempotency
-    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Use or reuse the stable idempotency key for this cart session
+    const idempotencyKey = currentIdempotencyKeyRef.current || generateIdempotencyKey();
 
     const billPayload = {
-      transactionId: transactionId,
+      idempotencyKey: idempotencyKey,
+      transactionId: idempotencyKey,
       items: cartItems.map(it => ({
         itemId: it.id,
         itemName: it.name,
-        quantity: it.quantity,
-        unitPrice: it.price,
-        total: it.price * it.quantity,
+        quantity: Number(it.quantity) || 1,
+        unitPrice: Number(it.price) || 0,
+        total: (Number(it.price) || 0) * (Number(it.quantity) || 1),
         categoryId: it.categoryId
       })),
       subtotal: subtotal,
@@ -220,11 +237,14 @@ export default function BillingDashboard({
       paymentMethod: paymentMethod,
       cashGiven: tenderedNum,
       change: changeAmt,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim()
+      customerName: (customerName || '').trim(),
+      customerPhone: (customerPhone || '').trim()
     };
 
+    // Engage locks
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
+
     try {
       await onConfirmBill(billPayload);
 
@@ -239,16 +259,20 @@ export default function BillingDashboard({
       setCustomerName('');
       setCustomerPhone('');
       setIsMobileCartOpen(false);
+
+      // Generate a fresh idempotency key for the next new bill
+      currentIdempotencyKeyRef.current = generateIdempotencyKey();
     } catch (err) {
       logger.error('BillingDashboard', 'Bill confirmation failed', err);
-      const userMsg = err?.userMessage || "Couldn't complete this bill. Your order was not saved. Please try again.";
+      const userMsg = err?.userMessage || "Couldn't save this bill to the server. Your cart is preserved. Please retry.";
       setSubmitError(userMsg);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
-  const activeCategoryObj = categories.find(c => c && c.id === selectedCategory);
+  const activeCategoryObj = (categories || []).find(c => c && c.id === selectedCategory);
 
   // Shared Light Frosted Glass Cart Component
   const renderCartContent = (isDrawer = false) => (
@@ -303,8 +327,8 @@ export default function BillingDashboard({
           </div>
         ) : (
           cartItems.map(item => {
-            const itemTotal = item.price * item.quantity;
-            const catObj = categories.find(c => c && c.id === item.categoryId);
+            const itemTotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
+            const catObj = (categories || []).find(c => c && c.id === item.categoryId);
 
             return (
               <div 
@@ -373,7 +397,7 @@ export default function BillingDashboard({
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{submitError}</span>
             </div>
-            <button onClick={() => setSubmitError('')} className="p-0.5">
+            <button onClick={() => setSubmitError('')} className="p-0.5 cursor-pointer">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -528,9 +552,7 @@ export default function BillingDashboard({
   return (
     <div className="flex-1 grid grid-cols-12 gap-3.5 p-3.5 overflow-hidden select-none relative">
       
-      {/* ---------------------------------------------------- */}
-      {/* LEFT / MAIN: LIGHT FROSTED GLASS MENU ORDERING AREA */}
-      {/* ---------------------------------------------------- */}
+      {/* LEFT / MAIN: MENU ORDERING AREA */}
       <div className="col-span-12 lg:col-span-8 xl:col-span-8 flex flex-col overflow-hidden glass-surface rounded-[32px] p-4">
         
         {/* PWA Install Quick Banner */}
@@ -596,7 +618,7 @@ export default function BillingDashboard({
             className="flex-1 flex items-center gap-2 overflow-x-auto scroll-smooth py-1 px-1 no-scrollbar"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {categories.map(cat => {
+            {(categories || []).map(cat => {
               if (!cat) return null;
               const isSelected = selectedCategory === cat.id && !itemSearch.trim();
               const count = categoryCounts[cat.id] || 0;
@@ -664,7 +686,7 @@ export default function BillingDashboard({
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
               {filteredItems.map(item => {
                 const inCartQty = cartQtyMap[item.id] || 0;
-                const catObj = categories.find(c => c && c.id === item.categoryId);
+                const catObj = (categories || []).find(c => c && c.id === item.categoryId);
 
                 return (
                   <div
@@ -726,16 +748,12 @@ export default function BillingDashboard({
         </div>
       </div>
 
-      {/* ---------------------------------------------------- */}
-      {/* RIGHT: DESKTOP ACTIVE BILL / CART                     */}
-      {/* ---------------------------------------------------- */}
+      {/* RIGHT: DESKTOP ACTIVE BILL / CART */}
       <div className="hidden lg:flex lg:col-span-4 xl:col-span-4 glass-surface rounded-[32px] p-4.5 flex-col overflow-hidden">
         {renderCartContent(false)}
       </div>
 
-      {/* ---------------------------------------------------- */}
-      {/* MOBILE FLOATING CART BUTTON (Fixed Above Bottom Nav) */}
-      {/* ---------------------------------------------------- */}
+      {/* MOBILE FLOATING CART BUTTON */}
       <div className="lg:hidden fixed right-4 bottom-[calc(72px+max(10px,env(safe-area-inset-bottom)))] z-40">
         <button
           onClick={() => setIsMobileCartOpen(true)}
@@ -760,9 +778,7 @@ export default function BillingDashboard({
         </button>
       </div>
 
-      {/* ---------------------------------------------------- */}
-      {/* MOBILE BOTTOM SHEET CART DRAWER                      */}
-      {/* ---------------------------------------------------- */}
+      {/* MOBILE BOTTOM SHEET CART DRAWER */}
       {isMobileCartOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/40 backdrop-blur-md">
           <div 

@@ -28,15 +28,13 @@ export class ErrorBoundary extends React.Component {
     this.setState({ hasError: false, error: null });
     if (this.props.onGoToPOS) {
       this.props.onGoToPOS();
-    } else {
-      window.location.href = '/';
     }
   };
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-[#F3F6FA] text-[#18202B] select-none">
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-[#F3F6FA] text-[#18202B] select-none min-h-[360px]">
           <div className="glass-surface p-8 sm:p-10 rounded-[36px] shadow-2xl max-w-md w-full flex flex-col items-center text-center border border-white/95">
             {/* EAT & DRINK Official Logo */}
             <div className="bg-white px-4 py-2 rounded-2xl border border-[#D8E1EC] shadow-sm mb-5">
@@ -52,7 +50,7 @@ export class ErrorBoundary extends React.Component {
               <AlertCircle className="w-5 h-5 stroke-[2.5]" />
             </div>
 
-            {/* Clear, truthful error messaging */}
+            {/* Clear, truthful customer messaging */}
             <h2 className="text-base font-black text-[#18202B] tracking-tight uppercase">
               Temporary POS Error
             </h2>

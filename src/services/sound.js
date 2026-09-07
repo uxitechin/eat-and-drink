@@ -28,7 +28,7 @@ export function playBeep() {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.08);
-  } catch (e) {
+  } catch (_e) {
     // Ignore audio error
   }
 }
@@ -51,7 +51,7 @@ export function playSuccess() {
       osc.start(now + i * 0.08);
       osc.stop(now + i * 0.08 + 0.25);
     });
-  } catch (e) {
+  } catch (_e) {
     // Ignore audio error
   }
 }
@@ -71,7 +71,7 @@ export function playClear() {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.12);
-  } catch (e) {
+  } catch (_e) {
     // Ignore audio error
   }
 }
