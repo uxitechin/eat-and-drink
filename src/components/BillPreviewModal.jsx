@@ -5,10 +5,7 @@ import {
   X, 
   Copy, 
   CheckCheck, 
-  Bluetooth,
-  RefreshCw,
-  AlertCircle,
-  FileText
+  Bluetooth
 } from 'lucide-react';
 import { printReceipt, generateReceiptText, bluetoothPrinter } from '../services/printer';
 import { logger } from '../services/logger';
@@ -21,13 +18,6 @@ export default function BillPreviewModal({
 }) {
   const savedPrinter = bluetoothPrinter.getSavedConfig();
   const [paperWidth, setPaperWidth] = useState(savedPrinter?.paperWidth || printerSettings?.paperWidth || '80mm');
-  const [isPrinting, setIsPrinting] = useState(false);
-  const [isPairing, setIsPairing] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-  
-  // Status: 'idle', 'success', 'no_printer', 'offline', 'error'
-  const [printStatus, setPrintStatus] = useState('idle');
-  const [errorMessage, setErrorMessage] = useState('');
   const [copied, setCopied] = useState(false);
 
   if (!bill) return null;
@@ -41,78 +31,27 @@ export default function BillPreviewModal({
 
   const receiptFormattedText = generateReceiptText(bill, receiptConfig);
 
-  // 1. Direct Bluetooth Print Flow
-  const handleBluetoothPrint = async () => {
-    setIsPrinting(true);
-    setPrintStatus('idle');
-    setErrorMessage('');
-    try {
-      await printReceipt(bill, receiptConfig);
-      setPrintStatus('success');
-      if (onPrintSuccess) onPrintSuccess();
-    } catch (err) {
-      logger.warn('BillPreviewModal', 'Thermal print exception', err);
-      if (err.code === 'NO_PRINTER_CONFIGURED') {
-        setPrintStatus('no_printer');
-      } else if (err.code === 'PRINTER_OFFLINE') {
-        setPrintStatus('offline');
-      } else {
-        setPrintStatus('error');
-        setErrorMessage(err.message || 'Thermal printer communication failed.');
-      }
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // 2. Direct Browser / System Print Dialog Fallback (Zero Bluetooth Dependency)
-  const handleBrowserSystemPrint = () => {
-    try {
-      window.print();
-      setPrintStatus('success');
-    } catch (err) {
-      logger.warn('BillPreviewModal', 'Browser print failed', err);
-    }
-  };
-
-  // 3. Direct Setup / Pair from Modal
-  const handlePairPrinterFromModal = async () => {
-    setIsPairing(true);
-    setErrorMessage('');
+  // 1. Pair / Connect Bluetooth Thermal Printer
+  const handlePairPrinter = async () => {
     try {
       await bluetoothPrinter.pairNewPrinter(paperWidth);
-      setPrintStatus('idle');
-      // Immediately print after pairing
-      await handleBluetoothPrint();
+      await printReceipt(bill, receiptConfig);
+      if (onPrintSuccess) onPrintSuccess();
     } catch (err) {
-      if (err.name !== 'NotFoundError') {
-        setErrorMessage(err.message || 'Bluetooth pairing failed.');
-      }
-    } finally {
-      setIsPairing(false);
+      logger.warn('BillPreviewModal', 'Pair printer error', err);
     }
   };
 
-  // 4. Reconnect from Modal
-  const handleReconnectFromModal = async () => {
-    setIsReconnecting(true);
-    setErrorMessage('');
+  // 2. Browser / System Print
+  const handleSystemPrint = () => {
     try {
-      const char = await bluetoothPrinter.autoReconnect();
-      if (char) {
-        setPrintStatus('idle');
-        await handleBluetoothPrint();
-      } else {
-        setErrorMessage('Printer is still offline. Please power on the device or click "Pair Printer".');
-      }
+      window.print();
     } catch (err) {
-      logger.warn('BillPreviewModal', 'Reconnect failed', err);
-      setErrorMessage('Could not reconnect to thermal printer.');
-    } finally {
-      setIsReconnecting(false);
+      logger.warn('BillPreviewModal', 'System print error', err);
     }
   };
 
+  // Copy receipt text to clipboard
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(receiptFormattedText).then(() => {
@@ -202,145 +141,55 @@ export default function BillPreviewModal({
           </div>
         </div>
 
-        {/* PRINT STATUS FEEDBACK BANNERS */}
-        {printStatus === 'success' && (
-          <div className="mb-2 p-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center justify-between animate-pop-in">
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
-              <span>Receipt printed successfully.</span>
-            </div>
-            <button onClick={() => setPrintStatus('idle')} className="text-emerald-700 hover:text-emerald-900 p-0.5 cursor-pointer">
-              <X className="w-3.5 h-3.5" />
+        {/* Action Buttons: Clean 2x2 Layout */}
+        <div className="pt-2 border-t border-[#D8E1EC]/60 flex flex-col gap-2 shrink-0">
+          {/* Row 1: Printer Actions */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handlePairPrinter}
+              className="w-full py-2.5 px-3 glass-pill text-[#18202B] hover:text-black rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <Bluetooth className="w-4 h-4 text-[#FF5B4A] stroke-[2.5] shrink-0" />
+              <span>Pair Printer</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSystemPrint}
+              className="w-full py-2.5 px-3 glass-pill text-[#18202B] hover:text-black rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <Printer className="w-4 h-4 text-[#4361EE] stroke-[2.5] shrink-0" />
+              <span>System Print</span>
             </button>
           </div>
-        )}
 
-        {/* First Time Setup: No Printer Configured on This Device */}
-        {printStatus === 'no_printer' && (
-          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>No thermal printer connected. (Bill is safely saved)</span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-amber-200">
-              <button 
-                onClick={handleBrowserSystemPrint}
-                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
-              >
-                <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span>System Print</span>
-              </button>
-              <button 
-                onClick={handlePairPrinterFromModal}
-                disabled={isPairing}
-                className="flex-1 sm:flex-none px-3.5 sm:px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <Bluetooth className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                <span>{isPairing ? 'Connecting...' : 'CONNECT PRINTER'}</span>
-              </button>
-            </div>
-          </div>
-        )}
+          {/* Row 2: Copy & Close */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="w-full py-2.5 px-3 glass-pill text-[#18202B] rounded-2xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              {copied ? (
+                <>
+                  <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-emerald-600 font-bold">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-[#697586] shrink-0" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
 
-        {/* Printer Offline Banner */}
-        {printStatus === 'offline' && (
-          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>Thermal printer is offline. (Bill is safely saved)</span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-rose-200">
-              <button 
-                onClick={handleBrowserSystemPrint}
-                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
-              >
-                <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span>System Print</span>
-              </button>
-              <button 
-                onClick={handlePairPrinterFromModal}
-                disabled={isPairing}
-                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-rose-800 rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
-              >
-                <Bluetooth className="w-3.5 h-3.5 shrink-0" />
-                <span>Pair Printer</span>
-              </button>
-              <button 
-                onClick={handleReconnectFromModal}
-                disabled={isReconnecting}
-                className="w-full sm:w-auto px-3.5 sm:px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isReconnecting ? 'animate-spin' : ''}`} />
-                <span>{isReconnecting ? 'Reconnecting...' : 'RECONNECT & PRINT'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* General Error Banner */}
-        {printStatus === 'error' && (
-          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMessage || 'Printing failed. (Bill is safely saved)'}</span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-rose-200">
-              <button 
-                onClick={handleBrowserSystemPrint}
-                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
-              >
-                <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span>System Print</span>
-              </button>
-              <button 
-                onClick={handleBluetoothPrint}
-                className="flex-1 sm:flex-none px-3.5 sm:px-4 py-1.5 bg-rose-600 text-white rounded-full text-[11px] sm:text-xs font-black cursor-pointer hover:bg-rose-700 flex items-center justify-center gap-1"
-              >
-                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-                <span>RETRY PRINT</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Action Buttons */}
-        <div className="pt-2.5 border-t border-[#D8E1EC]/60 flex items-center justify-between gap-1.5 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="px-3 sm:px-4 py-2 sm:py-2.5 glass-pill rounded-full text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer text-[#18202B] shrink-0"
-          >
-            {copied ? (
-              <>
-                <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-emerald-600 font-bold">Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-[#697586]" />
-                <span className="hidden xs:inline">Copy Receipt</span>
-                <span className="xs:hidden">Copy</span>
-              </>
-            )}
-          </button>
-
-          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 sm:px-4 py-2 sm:py-2.5 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer"
+              className="w-full py-2.5 px-3 bg-[#18202B] hover:bg-black text-white rounded-2xl text-xs font-bold flex items-center justify-center cursor-pointer transition-all active:scale-[0.98]"
             >
               Close
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBluetoothPrint}
-              disabled={isPrinting}
-              className="px-4 sm:px-6 py-2 sm:py-2.5 glass-btn-coral rounded-full text-[11px] sm:text-xs font-black flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-lg active:scale-95"
-            >
-              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
-              <span>{isPrinting ? 'Printing...' : 'PRINT RECEIPT'}</span>
             </button>
           </div>
         </div>
