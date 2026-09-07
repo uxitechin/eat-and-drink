@@ -123,32 +123,32 @@ export default function BillPreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-pop-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-md animate-pop-in select-none">
       
       {/* Modal Dialog (Light Frosted Glass Card) */}
-      <div className="glass-surface rounded-[36px] max-w-lg w-full p-6 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-white/95">
+      <div className="glass-surface rounded-[28px] sm:rounded-[36px] max-w-lg w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-white/95">
         
         {/* Header with Title & Close */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-[#D8E1EC]/60 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+        <div className="flex items-center justify-between pb-3 border-b border-[#D8E1EC]/60 shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
               <Check className="w-4 h-4 stroke-[3]" />
             </div>
-            <div>
-              <h2 className="text-base font-black text-[#18202B] leading-tight">Bill Generated</h2>
-              <p className="text-xs font-mono font-bold text-[#FF5B4A]">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-black text-[#18202B] leading-tight truncate">Bill Generated</h2>
+              <p className="text-[11px] sm:text-xs font-mono font-bold text-[#FF5B4A]">
                 {bill.billNumber || '#000000'} • {bill.paymentMethod || 'CASH'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Paper Width Selector Pills */}
-            <div className="flex items-center bg-[#F3F6FA] rounded-full p-1 border border-[#D8E1EC]">
+            <div className="flex items-center bg-[#F3F6FA] rounded-full p-0.5 sm:p-1 border border-[#D8E1EC]">
               <button
                 type="button"
                 onClick={() => setPaperWidth('58mm')}
-                className={`px-3 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-black transition-all cursor-pointer ${
                   paperWidth === '58mm'
                     ? 'glass-pill-active'
                     : 'text-[#697586] hover:text-[#18202B]'
@@ -159,7 +159,7 @@ export default function BillPreviewModal({
               <button
                 type="button"
                 onClick={() => setPaperWidth('80mm')}
-                className={`px-3 py-1 rounded-full text-[11px] font-black transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-black transition-all cursor-pointer ${
                   paperWidth === '80mm'
                     ? 'glass-pill-active'
                     : 'text-[#697586] hover:text-[#18202B]'
@@ -171,7 +171,7 @@ export default function BillPreviewModal({
 
             <button
               onClick={onClose}
-              className="p-2 rounded-full glass-pill text-[#697586] hover:text-[#18202B] transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-full glass-pill text-[#697586] hover:text-[#18202B] transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -179,10 +179,10 @@ export default function BillPreviewModal({
         </div>
 
         {/* Receipt Preview Area (Crisp White Thermal Paper Simulation) */}
-        <div className="my-3.5 flex-1 overflow-y-auto p-4 bg-white rounded-2xl border border-[#D8E1EC] shadow-inner flex flex-col items-center">
+        <div className="my-2.5 sm:my-3.5 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 bg-white rounded-2xl border border-[#D8E1EC] shadow-inner flex flex-col items-center">
           <div 
             style={{ 
-              maxWidth: paperWidth === '58mm' ? '250px' : '340px',
+              maxWidth: paperWidth === '58mm' ? '250px' : '330px',
               width: '100%'
             }}
             className="flex flex-col items-center"
@@ -190,11 +190,11 @@ export default function BillPreviewModal({
             <img 
               src="/eat-and-drink.png" 
               alt="EAT & DRINK" 
-              className="h-12 w-auto mb-1.5 object-contain" 
+              className="h-10 sm:h-12 w-auto mb-1.5 object-contain" 
             />
             <pre 
               id="printable-receipt"
-              className="receipt-font text-[11px] sm:text-[11.5px] leading-tight text-black whitespace-pre tracking-normal w-full"
+              className="receipt-font text-[9.5px] xs:text-[10.5px] sm:text-[11.5px] leading-tight text-black whitespace-pre tracking-normal w-full"
               style={{ fontFamily: '"Courier New", Courier, monospace' }}
             >
               {receiptFormattedText}
@@ -217,25 +217,25 @@ export default function BillPreviewModal({
 
         {/* First Time Setup: No Printer Configured on This Device */}
         {printStatus === 'no_printer' && (
-          <div className="mb-2 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
+          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>No thermal printer connected on this device yet. (Bill is safely saved)</span>
+              <span>No thermal printer connected. (Bill is safely saved)</span>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-1 border-t border-amber-200">
+            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-amber-200">
               <button 
                 onClick={handleBrowserSystemPrint}
-                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
+                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5 shrink-0" />
                 <span>System Print</span>
               </button>
               <button 
                 onClick={handlePairPrinterFromModal}
                 disabled={isPairing}
-                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="flex-1 sm:flex-none px-3.5 sm:px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
               >
-                <Bluetooth className="w-3.5 h-3.5 stroke-[2.5]" />
+                <Bluetooth className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
                 <span>{isPairing ? 'Connecting...' : 'CONNECT PRINTER'}</span>
               </button>
             </div>
@@ -244,33 +244,33 @@ export default function BillPreviewModal({
 
         {/* Printer Offline Banner */}
         {printStatus === 'offline' && (
-          <div className="mb-2 p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
+          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>Thermal printer is offline. (Bill is safely saved)</span>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-200">
+            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-rose-200">
               <button 
                 onClick={handleBrowserSystemPrint}
-                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
+                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5 shrink-0" />
                 <span>System Print</span>
               </button>
               <button 
                 onClick={handlePairPrinterFromModal}
                 disabled={isPairing}
-                className="px-3 py-1.5 glass-pill text-rose-800 rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
+                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-rose-800 rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
               >
-                <Bluetooth className="w-3.5 h-3.5" />
+                <Bluetooth className="w-3.5 h-3.5 shrink-0" />
                 <span>Pair Printer</span>
               </button>
               <button 
                 onClick={handleReconnectFromModal}
                 disabled={isReconnecting}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="w-full sm:w-auto px-3.5 sm:px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isReconnecting ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isReconnecting ? 'animate-spin' : ''}`} />
                 <span>{isReconnecting ? 'Reconnecting...' : 'RECONNECT & PRINT'}</span>
               </button>
             </div>
@@ -279,54 +279,56 @@ export default function BillPreviewModal({
 
         {/* General Error Banner */}
         {printStatus === 'error' && (
-          <div className="mb-2 p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
+          <div className="mb-2 p-2.5 sm:p-3 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-col gap-2 animate-pop-in">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage || 'Printing failed. (Bill is safely saved)'}</span>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-200">
+            <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pt-1.5 border-t border-rose-200">
               <button 
                 onClick={handleBrowserSystemPrint}
-                className="px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-xs font-bold cursor-pointer flex items-center gap-1"
+                className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 glass-pill text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5 shrink-0" />
                 <span>System Print</span>
               </button>
               <button 
                 onClick={handleBluetoothPrint}
-                className="px-4 py-1.5 bg-rose-600 text-white rounded-full text-xs font-black cursor-pointer hover:bg-rose-700"
+                className="flex-1 sm:flex-none px-3.5 sm:px-4 py-1.5 bg-rose-600 text-white rounded-full text-[11px] sm:text-xs font-black cursor-pointer hover:bg-rose-700 flex items-center justify-center gap-1"
               >
-                RETRY BLUETOOTH
+                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+                <span>RETRY PRINT</span>
               </button>
             </div>
           </div>
         )}
 
         {/* Modal Action Buttons */}
-        <div className="pt-2 border-t border-[#D8E1EC]/60 flex items-center justify-between gap-3 shrink-0">
+        <div className="pt-2.5 border-t border-[#D8E1EC]/60 flex items-center justify-between gap-1.5 sm:gap-3 shrink-0">
           <button
             type="button"
             onClick={handleCopy}
-            className="px-4 py-2.5 glass-pill rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer text-[#18202B]"
+            className="px-3 sm:px-4 py-2 sm:py-2.5 glass-pill rounded-full text-[11px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer text-[#18202B] shrink-0"
           >
             {copied ? (
               <>
-                <CheckCheck className="w-4 h-4 text-emerald-600" />
+                <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="text-emerald-600 font-bold">Copied!</span>
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4 text-[#697586]" />
-                <span>Copy Receipt</span>
+                <Copy className="w-3.5 h-3.5 text-[#697586]" />
+                <span className="hidden xs:inline">Copy Receipt</span>
+                <span className="xs:hidden">Copy</span>
               </>
             )}
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-xs font-bold cursor-pointer"
+              className="px-3 sm:px-4 py-2 sm:py-2.5 glass-pill text-[#697586] hover:text-[#18202B] rounded-full text-[11px] sm:text-xs font-bold cursor-pointer"
             >
               Close
             </button>
@@ -335,10 +337,10 @@ export default function BillPreviewModal({
               type="button"
               onClick={handleBluetoothPrint}
               disabled={isPrinting}
-              className="px-6 py-2.5 glass-btn-coral rounded-full text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95"
+              className="px-4 sm:px-6 py-2 sm:py-2.5 glass-btn-coral rounded-full text-[11px] sm:text-xs font-black flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-lg active:scale-95"
             >
-              <Printer className="w-4 h-4 stroke-[2.5]" />
-              <span>{isPrinting ? 'Sending to Printer...' : 'PRINT RECEIPT'}</span>
+              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+              <span>{isPrinting ? 'Printing...' : 'PRINT RECEIPT'}</span>
             </button>
           </div>
         </div>
