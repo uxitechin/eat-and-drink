@@ -241,7 +241,7 @@ export default function BillingDashboard({
       setIsMobileCartOpen(false);
     } catch (err) {
       logger.error('BillingDashboard', 'Bill confirmation failed', err);
-      const userMsg = err?.message || 'Unable to save bill. Please try again.';
+      const userMsg = err?.userMessage || "Couldn't complete this bill. Your order was not saved. Please try again.";
       setSubmitError(userMsg);
     } finally {
       setIsSubmitting(false);
@@ -519,7 +519,7 @@ export default function BillingDashboard({
           }`}
         >
           <CheckCircle2 className={`w-5 h-5 stroke-[2.5] ${isSubmitting ? 'animate-spin' : ''}`} />
-          <span>{isSubmitting ? 'CONFIRMING BILL...' : `CONFIRM BILL • ₹${grandTotal.toFixed(2)}`}</span>
+          <span>{isSubmitting ? 'SAVING BILL...' : `CONFIRM BILL • ₹${grandTotal.toFixed(2)}`}</span>
         </button>
       </div>
     </div>

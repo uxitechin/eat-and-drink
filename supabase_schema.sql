@@ -79,12 +79,89 @@ CREATE TABLE IF NOT EXISTS public.printer_settings (
 );
 
 -- ====================================================================
--- 4. ATOMIC FUNCTION: GET NEXT BILL NUMBER
+-- 4. ATOMIC FUNCTION: GET NEXT BILL NUMBER & CREATE BILL ATOMIC
 -- ====================================================================
 CREATE OR REPLACE FUNCTION public.get_next_bill_number()
 RETURNS TEXT AS $$
+DECLARE
+    next_num BIGINT;
+    max_existing_num BIGINT;
 BEGIN
-    RETURN '#' || LPAD(nextval('bill_number_seq')::TEXT, 6, '0');
+    SELECT COALESCE(MAX(NULLIF(regexp_replace(bill_number, '\D', '', 'g'), '')::BIGINT), 0) INTO max_existing_num FROM public.bills;
+    SELECT nextval('bill_number_seq') INTO next_num;
+    IF next_num <= max_existing_num THEN
+        PERFORM setval('bill_number_seq', max_existing_num + 1);
+        next_num := max_existing_num + 1;
+    END IF;
+    RETURN '#' || LPAD(next_num::TEXT, 6, '0');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.create_bill_atomic(
+    p_subtotal NUMERIC,
+    p_discount NUMERIC,
+    p_total NUMERIC,
+    p_payment_method TEXT,
+    p_cash_given NUMERIC DEFAULT NULL,
+    p_change_given NUMERIC DEFAULT NULL,
+    p_customer_name TEXT DEFAULT '',
+    p_customer_phone TEXT DEFAULT '',
+    p_bill_date DATE DEFAULT CURRENT_DATE,
+    p_items JSONB DEFAULT '[]'::jsonb
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_bill_id UUID;
+    v_bill_number TEXT;
+    v_item JSONB;
+    v_result JSONB;
+BEGIN
+    -- 1. Allocate next atomic bill number
+    v_bill_number := public.get_next_bill_number();
+
+    -- 2. Insert bill header
+    INSERT INTO public.bills (
+        bill_number, subtotal, discount, total, payment_method, 
+        cash_given, change_given, customer_name, customer_phone, bill_date
+    ) VALUES (
+        v_bill_number, p_subtotal, p_discount, p_total, p_payment_method,
+        p_cash_given, p_change_given, p_customer_name, p_customer_phone, p_bill_date
+    ) RETURNING id INTO v_bill_id;
+
+    -- 3. Insert line items
+    IF jsonb_array_length(p_items) > 0 THEN
+        FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+        LOOP
+            INSERT INTO public.bill_items (
+                bill_id, menu_item_id, item_name, unit_price, quantity, item_total
+            ) VALUES (
+                v_bill_id,
+                v_item->>'menu_item_id',
+                v_item->>'item_name',
+                (v_item->>'unit_price')::NUMERIC,
+                (v_item->>'quantity')::INTEGER,
+                (v_item->>'item_total')::NUMERIC
+            );
+        END LOOP;
+    END IF;
+
+    -- 4. Return complete saved bill object
+    SELECT jsonb_build_object(
+        'id', v_bill_id,
+        'bill_number', v_bill_number,
+        'subtotal', p_subtotal,
+        'discount', p_discount,
+        'total', p_total,
+        'payment_method', p_payment_method,
+        'cash_given', p_cash_given,
+        'change_given', p_change_given,
+        'customer_name', p_customer_name,
+        'customer_phone', p_customer_phone,
+        'bill_date', p_bill_date,
+        'created_at', now()
+    ) INTO v_result;
+
+    RETURN v_result;
 END;
 $$ LANGUAGE plpgsql;
 

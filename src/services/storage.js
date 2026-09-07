@@ -11,15 +11,6 @@ const KEYS = {
   LAST_BILL_SEQ: 'eat_drink_last_bill_seq',
 };
 
-// Filter out test-generated bills
-const EXCLUDED_TEST_BILLS = new Set(['#000030', '#000031', '#000032', '#000033', '#000034']);
-export const isTestBill = (b) => {
-  if (!b) return false;
-  const num = b.billNumber || b.bill_number || '';
-  const cust = b.customerName || b.customer_name || '';
-  return EXCLUDED_TEST_BILLS.has(num) || cust === 'Test Cashier';
-};
-
 // Safe LocalStorage helpers that never throw and never clear other data
 function safeGetJSON(key, fallback) {
   if (typeof localStorage === 'undefined') return fallback;
@@ -155,62 +146,83 @@ export function formatTimeDisplay(d = new Date()) {
   return `${hours}:${minutes} ${ampm}`;
 }
 
-// --- RELIABLE SEQUENTIAL BILL NUMBERING ---
+// --- AUTHORITATIVE SEQUENTIAL BILL NUMBER GENERATION (DATABASE SOURCE OF TRUTH) ---
 export async function getNextBillNumber() {
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabase
         .from('bills')
         .select('bill_number')
-        .not('bill_number', 'in', '("#000030","#000031","#000032","#000033","#000034")')
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(100);
 
-      if (!error && data && data.length > 0 && data[0].bill_number) {
-        const match = data[0].bill_number.match(/\d+/);
-        if (match) {
-          const nextSeq = parseInt(match[0], 10) + 1;
+      if (!error && data && data.length > 0) {
+        let maxSeq = 0;
+        data.forEach(b => {
+          if (b && b.bill_number) {
+            const match = b.bill_number.match(/\d+/);
+            if (match) {
+              const num = parseInt(match[0], 10);
+              if (!isNaN(num) && num > maxSeq) {
+                maxSeq = num;
+              }
+            }
+          }
+        });
+        if (maxSeq > 0) {
+          const nextSeq = maxSeq + 1;
+          safeSetJSON(KEYS.LAST_BILL_SEQ, String(nextSeq));
           return `#${String(nextSeq).padStart(6, '0')}`;
         }
       }
-      return '#000030';
     } catch (e) {
-      logger.warn('Storage', 'Error querying next bill number from Supabase', e);
+      logger.warn('Storage', 'Error querying authoritative bill number from Supabase', e);
     }
   }
 
   // Fallback to local sequence
-  let seq = parseInt(safeGetJSON(KEYS.LAST_BILL_SEQ, '29'), 10);
-  if (isNaN(seq) || seq >= 30) seq = 29;
+  let seq = parseInt(safeGetJSON(KEYS.LAST_BILL_SEQ, '0'), 10);
+  if (isNaN(seq) || seq < 0) seq = 0;
   seq += 1;
   safeSetJSON(KEYS.LAST_BILL_SEQ, String(seq));
   return `#${String(seq).padStart(6, '0')}`;
 }
 
 export function getAllBills() {
-  return safeGetJSON(KEYS.BILLS, []).filter(b => !isTestBill(b));
+  return safeGetJSON(KEYS.BILLS, []);
 }
 
 export function saveBills(bills) {
   if (Array.isArray(bills)) {
-    const clean = bills.filter(b => !isTestBill(b));
-    safeSetJSON(KEYS.BILLS, clean);
+    safeSetJSON(KEYS.BILLS, bills);
   }
 }
 
 // In-flight bill creation idempotency map (client-side lock)
 const pendingTransactions = new Set();
 
-// --- SAVE CONFIRMED BILL (IDEMPOTENT + TRANSACTION SAFE) ---
+// --- SAVE CONFIRMED BILL (ATOMIC + IDEMPOTENT + AUTO-COLLISION RECOVERY) ---
 export async function saveConfirmedBill(billData) {
   if (!billData || !billData.items || billData.items.length === 0) {
-    throw new Error('Cannot save an empty bill.');
+    const err = new Error('Cannot save an empty bill.');
+    err.code = 'VALIDATION_ERROR';
+    err.userMessage = 'Cannot confirm an empty cart.';
+    throw err;
   }
 
   const transactionId = billData.transactionId || `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
   if (pendingTransactions.has(transactionId)) {
-    throw new Error('A transaction with this ID is already in progress.');
+    const err = new Error('A transaction with this ID is already in progress.');
+    err.code = 'DUPLICATE_TRANSACTION';
+    err.userMessage = 'This order is currently being processed. Please wait.';
+    throw err;
+  }
+
+  // Check if this transaction was already successfully saved (Idempotency)
+  const existingBill = getAllBills().find(b => b.transactionId === transactionId);
+  if (existingBill) {
+    return existingBill;
   }
 
   pendingTransactions.add(transactionId);
@@ -221,57 +233,80 @@ export async function saveConfirmedBill(billData) {
     const dateDisplay = formatDateDisplay(dateKey);
     const timeDisplay = formatTimeDisplay(now);
 
-    const billNumber = billData.billNumber || await getNextBillNumber();
-    
-    const finalizedBill = {
-      id: 'bill_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
-      transactionId: transactionId,
-      billNumber: billNumber,
-      items: billData.items || [],
-      subtotal: Number(billData.subtotal) || 0,
-      discount: Number(billData.discount) || 0,
-      total: Number(billData.total) || 0,
-      paymentMethod: billData.paymentMethod || 'CASH',
-      cashGiven: billData.paymentMethod === 'CASH' && billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
-      change: billData.paymentMethod === 'CASH' && billData.change !== undefined ? Number(billData.change) : undefined,
-      customerName: billData.customerName || '',
-      customerPhone: billData.customerPhone || '',
-      dateKey: dateKey,
-      date: dateDisplay,
-      time: timeDisplay,
-      timestamp: now.getTime(),
-      createdAt: now.toISOString(),
-    };
+    let finalizedBill = null;
+    let attempts = 0;
+    const maxAttempts = 5;
 
-    // 1. Insert into Supabase PostgreSQL (Source of Truth)
-    if (isSupabaseConfigured) {
+    while (attempts < maxAttempts) {
+      attempts++;
+      // Determine next sequence from database
+      const allocatedBillNumber = await getNextBillNumber();
+
+      const candidateBill = {
+        id: 'bill_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+        transactionId: transactionId,
+        billNumber: allocatedBillNumber,
+        items: billData.items || [],
+        subtotal: Number(billData.subtotal) || 0,
+        discount: Number(billData.discount) || 0,
+        total: Number(billData.total) || 0,
+        paymentMethod: billData.paymentMethod || 'CASH',
+        cashGiven: billData.paymentMethod === 'CASH' && billData.cashGiven !== undefined ? Number(billData.cashGiven) : undefined,
+        change: billData.paymentMethod === 'CASH' && billData.change !== undefined ? Number(billData.change) : undefined,
+        customerName: billData.customerName || '',
+        customerPhone: billData.customerPhone || '',
+        dateKey: dateKey,
+        date: dateDisplay,
+        time: timeDisplay,
+        timestamp: now.getTime(),
+        createdAt: now.toISOString(),
+      };
+
+      if (!isSupabaseConfigured) {
+        finalizedBill = candidateBill;
+        break;
+      }
+
+      // 1. Insert bill header into Supabase
       const { data: billRecord, error: billError } = await supabase
         .from('bills')
         .insert({
-          bill_number: finalizedBill.billNumber,
-          subtotal: finalizedBill.subtotal,
-          discount: finalizedBill.discount,
-          total: finalizedBill.total,
-          payment_method: finalizedBill.paymentMethod,
-          cash_given: finalizedBill.cashGiven ?? null,
-          change_given: finalizedBill.change ?? null,
-          customer_name: finalizedBill.customerName || '',
-          customer_phone: finalizedBill.customerPhone || '',
-          bill_date: finalizedBill.dateKey,
+          bill_number: candidateBill.billNumber,
+          subtotal: candidateBill.subtotal,
+          discount: candidateBill.discount,
+          total: candidateBill.total,
+          payment_method: candidateBill.paymentMethod,
+          cash_given: candidateBill.cashGiven ?? null,
+          change_given: candidateBill.change ?? null,
+          customer_name: candidateBill.customerName || '',
+          customer_phone: candidateBill.customerPhone || '',
+          bill_date: candidateBill.dateKey,
         })
         .select()
         .single();
 
       if (billError) {
-        logger.error('Storage', 'Failed to insert bill into Supabase', billError);
-        throw new Error('Unable to save bill to database: ' + (billError.message || 'Database error'));
+        const isDuplicateKey = billError.code === '23505' || 
+          (billError.message && billError.message.includes('unique constraint')) ||
+          (billError.details && billError.details.includes('already exists'));
+
+        if (isDuplicateKey) {
+          logger.warn('Storage', `Bill number ${candidateBill.billNumber} already exists in DB. Auto-incrementing and retrying (attempt ${attempts}/${maxAttempts})...`);
+          continue;
+        }
+
+        logger.error('Storage', 'Database insert failed for bill', billError);
+        const err = new Error('Database insert failed');
+        err.code = 'DATABASE_ERROR';
+        err.userMessage = "Couldn't complete this bill. Your order was not saved. Please try again.";
+        throw err;
       }
 
-      finalizedBill.id = billRecord.id;
+      candidateBill.id = billRecord.id;
 
       // 2. Insert line items
-      if (finalizedBill.items && finalizedBill.items.length > 0) {
-        const lineItems = finalizedBill.items.map(it => {
+      if (candidateBill.items && candidateBill.items.length > 0) {
+        const lineItems = candidateBill.items.map(it => {
           const price = it.unitPrice || it.price || 0;
           return {
             bill_id: billRecord.id,
@@ -285,18 +320,29 @@ export async function saveConfirmedBill(billData) {
 
         const { error: itemsError } = await supabase.from('bill_items').insert(lineItems);
         if (itemsError) {
-          logger.error('Storage', 'Failed to insert bill items into Supabase', itemsError);
+          logger.error('Storage', 'Failed to insert bill items into Supabase, rolling back bill header', itemsError);
           try {
             await supabase.from('bills').delete().eq('id', billRecord.id);
-          } catch (rollbackErr) {
-            logger.error('Storage', 'Rollback failed for orphan bill', rollbackErr);
-          }
-          throw new Error('Failed to save complete bill items.');
+          } catch (rbErr) {}
+          const err = new Error('Failed to save complete bill items.');
+          err.code = 'DATABASE_ERROR';
+          err.userMessage = "Couldn't complete saving bill items. Your order was not counted. Please try again.";
+          throw err;
         }
       }
+
+      finalizedBill = candidateBill;
+      break;
     }
 
-    // 3. Update local cache ONLY AFTER successful database response
+    if (!finalizedBill) {
+      const err = new Error('Failed to allocate unique bill number after multiple attempts.');
+      err.code = 'DATABASE_ERROR';
+      err.userMessage = 'Please check Bill History before trying again.';
+      throw err;
+    }
+
+    // 3. Update local cache ONLY AFTER successful database confirmation
     const allBills = getAllBills();
     allBills.unshift(finalizedBill);
     saveBills(allBills);
@@ -321,31 +367,29 @@ export async function fetchRemoteBills() {
 
     if (error) throw error;
     if (data && Array.isArray(data)) {
-      const mapped = data
-        .filter(b => !isTestBill(b))
-        .map(b => ({
-          id: b.id,
-          billNumber: b.bill_number,
-          subtotal: Number(b.subtotal),
-          discount: Number(b.discount),
-          total: Number(b.total),
-          paymentMethod: b.payment_method,
-          cashGiven: b.cash_given ? Number(b.cash_given) : undefined,
-          change: b.change_given ? Number(b.change_given) : undefined,
-          customerName: b.customer_name || '',
-          customerPhone: b.customer_phone || '',
-          dateKey: b.bill_date,
-          date: formatDateDisplay(b.bill_date),
-          time: new Date(b.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          items: (b.bill_items || []).map(bi => ({
-            itemName: bi.item_name,
-            name: bi.item_name,
-            unitPrice: Number(bi.unit_price),
-            price: Number(bi.unit_price),
-            quantity: bi.quantity,
-          })),
-          createdAt: b.created_at,
-        }));
+      const mapped = data.map(b => ({
+        id: b.id,
+        billNumber: b.bill_number,
+        subtotal: Number(b.subtotal),
+        discount: Number(b.discount),
+        total: Number(b.total),
+        paymentMethod: b.payment_method,
+        cashGiven: b.cash_given ? Number(b.cash_given) : undefined,
+        change: b.change_given ? Number(b.change_given) : undefined,
+        customerName: b.customer_name || '',
+        customerPhone: b.customer_phone || '',
+        dateKey: b.bill_date,
+        date: formatDateDisplay(b.bill_date),
+        time: new Date(b.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        items: (b.bill_items || []).map(bi => ({
+          itemName: bi.item_name,
+          name: bi.item_name,
+          unitPrice: Number(bi.unit_price),
+          price: Number(bi.unit_price),
+          quantity: bi.quantity,
+        })),
+        createdAt: b.created_at,
+      }));
       saveBills(mapped);
 
       // Rebuild & sync daily summaries directly from Supabase source of truth
@@ -424,14 +468,13 @@ export async function fetchRemoteDailySummary(dateKey = getTodayDateKey()) {
 
     if (error) throw error;
 
-    const validBills = (bills || []).filter(b => !isTestBill(b));
     let totalSales = 0;
     let cashSales = 0;
     let upiSales = 0;
-    let billCount = validBills.length;
+    let billCount = bills?.length || 0;
     let itemCount = 0;
 
-    validBills.forEach(b => {
+    (bills || []).forEach(b => {
       const amt = Number(b.total) || 0;
       totalSales += amt;
       if (b.payment_method === 'CASH') {
@@ -478,7 +521,6 @@ export function saveDailySummaries(summaries) {
 }
 
 function updateDailySummary(dateKey, bill) {
-  if (isTestBill(bill)) return;
   const summaries = getAllDailySummaries();
   const current = summaries[dateKey] || {
     dateKey: dateKey,
@@ -579,7 +621,7 @@ export function exportFullDatabase() {
     bills: getAllBills(),
     dailySummaries: getAllDailySummaries(),
     printerSettings: getPrinterSettings(),
-    lastBillSeq: safeGetJSON(KEYS.LAST_BILL_SEQ, '29'),
+    lastBillSeq: safeGetJSON(KEYS.LAST_BILL_SEQ, '34'),
   };
 }
 
